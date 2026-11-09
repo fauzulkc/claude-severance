@@ -27,7 +27,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
@@ -55,7 +55,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           cat notes.md
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: notes
           path: notes.md
@@ -66,7 +66,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
@@ -95,7 +95,7 @@ jobs:
           Copy-Item $zip (Join-Path (Split-Path $zip) 'ClaudeSeverance.zip')
           Get-ChildItem dist -File | Format-Table Name, Length -AutoSize
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: |
@@ -114,7 +114,7 @@ jobs:
           - { os: macos-latest, name: macOS, target: macos }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
@@ -128,7 +128,7 @@ jobs:
             echo "::notice::No ${{ matrix.name }} port in this release yet. See docs/PLATFORMS-PLAN.md."
           fi
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: steps.port.outputs.present == 'true'
         with:
           go-version-file: unix/go.mod
@@ -142,7 +142,7 @@ jobs:
           (cd unix && go test -count=1 ./...)
           bash unix/build.sh "${{ matrix.target }}" "${{ needs.prepare.outputs.version }}" dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.port.outputs.present == 'true'
         with:
           name: release-${{ matrix.target }}
@@ -158,22 +158,22 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist
           merge-multiple: true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: notes
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/*
 

@@ -19,7 +19,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Scripts parse, stay ASCII and use CRLF
         shell: powershell
@@ -75,7 +75,7 @@ jobs:
           $zip = powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-release.ps1
           Get-Item $zip, "$zip.sha256" | Format-Table Name, Length -AutoSize
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: windows-ci
@@ -96,7 +96,7 @@ jobs:
           - { os: macos-latest, name: macOS }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Look for the port
         id: port
@@ -108,7 +108,7 @@ jobs:
             echo "::notice::No ${{ matrix.name }} port yet (unix/go.mod). See docs/PLATFORMS-PLAN.md."
           fi
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: steps.port.outputs.present == 'true'
         with:
           go-version-file: unix/go.mod
@@ -131,7 +131,7 @@ jobs:
     name: Workflows and hygiene
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: actionlint
         run: |
