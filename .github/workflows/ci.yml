@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows (PowerShell 5.1)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scripts parse, stay ASCII and use CRLF
+        shell: powershell
+        run: |
+          $bad = 0
+          Get-ChildItem src, tools, tests, . -File -Include *.ps1, *.psm1, *.cmd -Recurse | Sort-Object FullName -Unique | ForEach-Object {
+            $bytes = [IO.File]::ReadAllBytes($_.FullName)
+            if (@($bytes | Where-Object { $_ -gt 127 }).Count) { Write-Host "::error file=$($_.FullName)::non-ASCII character"; $bad++ }
+            $text = [Text.Encoding]::ASCII.GetString($bytes)
+            if ([regex]::IsMatch($text, "(?<!`r)`n")) { Write-Host "::error file=$($_.FullName)::line endings must be CRLF"; $bad++ }
+            if ($_.Extension -ne '.cmd') {
+              $tokens = $null; $errors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors)
+              foreach ($e in $errors) { Write-Host "::error file=$($_.FullName),line=$($e.Extent.StartLineNumber)::$($e.Message)"; $bad++ }
+            }
+          }
+          if ($bad) { exit 1 }
+
+      - name: PSScriptAnalyzer (errors)
+        shell: powershell
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $r = Invoke-ScriptAnalyzer -Path src -Recurse -Severity Error
+          $r | Format-Table -AutoSize
+          if ($r) { exit 1 }
+
+      - name: Unit tests (Pester 5)
+        shell: powershell
+        run: |
+          Install-Module Pester -MinimumVersion 5.5 -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester -MinimumVersion 5.5
+          $c = New-PesterConfiguration
+          $c.Run.Path = 'tests'
+          $c.Run.Exit = $true
+          $c.Output.Verbosity = 'Detailed'
+          $c.TestResult.Enabled = $true
+          $c.TestResult.OutputFormat = 'JUnitXml'
+          $c.TestResult.OutputPath = Join-Path $env:RUNNER_TEMP 'pester.xml'
+          Invoke-Pester -Configuration $c
+
+      - name: Render every setup screen (preview mode)
+        shell: powershell
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'screenshots'
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture-screens.ps1 -Out $out
+          Get-Content (Join-Path $out 'capture.log')
+          Get-ChildItem $out -Filter *.error.txt | ForEach-Object { Write-Host "::error::$($_.Name)"; Get-Content $_.FullName }
+          if (Select-String -Path (Join-Path $out 'capture.log') -Pattern 'saved=False') { exit 1 }
+
+      - name: Build the release zip (dry run)
+        shell: powershell
+        run: |
+          $zip = powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-release.ps1
+          Get-Item $zip, "$zip.sha256" | Format-Table Name, Length -AutoSize
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-ci
+          path: |
+            ${{ runner.temp }}/screenshots
+            ${{ runner.temp }}/pester.xml
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: ignore
+
+  unix:
+    name: ${{ matrix.name }} port
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: Linux }
+          - { os: macos-latest, name: macOS }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Look for the port
+        id: port
+        run: |
+          if [ -f unix/go.mod ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No ${{ matrix.name }} port yet (unix/go.mod). See docs/PLATFORMS-PLAN.md."
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.port.outputs.present == 'true'
+        with:
+          go-version-file: unix/go.mod
+          cache-dependency-path: unix/go.sum
+
+      - name: Vet and test
+        if: steps.port.outputs.present == 'true'
+        working-directory: unix
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
+
+      - name: Check launchers
+        if: steps.port.outputs.present == 'true' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq desktop-file-utils
+          if [ -d unix/testdata/launchers ]; then desktop-file-validate unix/testdata/launchers/*.desktop; fi
+
+  lint:
+    name: Workflows and hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+
+      - name: No placeholders left
+        run: |
+          if git grep -n -I 'OWNER[/]' -- ':!RELEASING.md'; then
+            echo "::error::Replace the OWNER placeholder with the GitHub owner."
+            exit 1
+          fi

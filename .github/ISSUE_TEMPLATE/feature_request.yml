@@ -1,0 +1,19 @@
+name: Idea
+description: Suggest something Claude Severance could do
+labels: [idea]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you're trying to do
+      description: The situation, in a sentence or two.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+  - type: textarea
+    id: else
+    attributes:
+      label: What you do today instead

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Problem with Claude Desktop or Claude Code itself
+    url: https://support.claude.com
+    about: Issues in Anthropic's apps go to Anthropic's support.

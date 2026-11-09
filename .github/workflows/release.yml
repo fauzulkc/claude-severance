@@ -1,0 +1,195 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: An existing tag to build and publish again (for example v1.1.0)
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  prepare:
+    name: Check the tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Tag, module version and CHANGELOG agree
+        id: v
+        run: |
+          version="${TAG#v}"
+          base="${version%%-*}"
+          # .psm1 files are checked out with CRLF everywhere (.gitattributes), so drop the CR
+          module="$(sed -n "s/^\$script:Version = '\([^']*\)'.*/\1/p" src/Severance.psm1 | tr -d '\r')"
+          if [ "$base" != "$module" ]; then
+            echo "::error::Tag $TAG is $base but src/Severance.psm1 says $module."
+            exit 1
+          fi
+          awk -v v="## [$base]" 'index($0, v) == 1 { on = 1; next } /^## \[/ { on = 0 } on' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no '## [$base]' section."
+            exit 1
+          fi
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          {
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+          cat notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes
+          path: notes.md
+
+  windows:
+    name: Windows build
+    needs: prepare
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Unit tests (Pester 5)
+        shell: powershell
+        run: |
+          Install-Module Pester -MinimumVersion 5.5 -Force -SkipPublisherCheck -Scope CurrentUser
+          Import-Module Pester -MinimumVersion 5.5
+          $c = New-PesterConfiguration
+          $c.Run.Path = 'tests'
+          $c.Run.Exit = $true
+          Invoke-Pester -Configuration $c
+
+      - name: Render every setup screen
+        shell: powershell
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'screenshots'
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture-screens.ps1 -Out $out
+          if (Select-String -Path (Join-Path $out 'capture.log') -Pattern 'saved=False') { Get-Content (Join-Path $out 'capture.log'); exit 1 }
+
+      - name: Build the zip
+        shell: powershell
+        run: |
+          $zip = powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-release.ps1
+          # a versionless copy, so releases/latest/download/ClaudeSeverance.zip always gives the newest
+          Copy-Item $zip (Join-Path (Split-Path $zip) 'ClaudeSeverance.zip')
+          Get-ChildItem dist -File | Format-Table Name, Length -AutoSize
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  unix:
+    name: ${{ matrix.name }} build
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: Linux, target: linux }
+          - { os: macos-latest, name: macOS, target: macos }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Look for the port
+        id: port
+        run: |
+          if [ -f unix/go.mod ] && [ -f unix/build.sh ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No ${{ matrix.name }} port in this release yet. See docs/PLATFORMS-PLAN.md."
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.port.outputs.present == 'true'
+        with:
+          go-version-file: unix/go.mod
+          cache-dependency-path: unix/go.sum
+
+      # unix/build.sh <linux|macos> <version> <out dir> writes the archives, for example
+      # ClaudeSeverance-<v>-linux-x86_64.tar.gz, ...-linux-aarch64.tar.gz and ...-macos-universal.zip, each with a .sha256
+      - name: Test and build
+        if: steps.port.outputs.present == 'true'
+        run: |
+          (cd unix && go test -count=1 ./...)
+          bash unix/build.sh "${{ matrix.target }}" "${{ needs.prepare.outputs.version }}" dist
+
+      - uses: actions/upload-artifact@v4
+        if: steps.port.outputs.present == 'true'
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [prepare, windows, unix]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: notes
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          ls -l dist
+          flags=()
+          # a manual re-run of an older tag must not take "latest" from a newer release
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); elif [ "$GITHUB_EVENT_NAME" = "push" ]; then flags+=(--latest); fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --notes-file notes.md "${flags[@]}"
+          else
+            gh release create "$TAG" dist/* --title "Claude Severance $VERSION" --notes-file notes.md --verify-tag "${flags[@]}"
+          fi

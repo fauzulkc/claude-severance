@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in Claude Severance doesn't work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please leave out emails, tokens and client names; screenshots are welcome.
+        For a security issue, use Security > Report a vulnerability instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Setup window (install, update, accounts, uninstall)
+        - Claude Desktop shortcut or window
+        - claude-<account> command or auto-switch
+        - Status line badge
+        - Text setup or silent switches
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `severance version`, Windows version (winver), and Claude Desktop version.
+      placeholder: Claude Severance 1.1.0, Windows 11 24H2, Claude Desktop 1.x
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Claude Desktop install type
+      options: [Microsoft Store, claude.ai download, Not sure]
+  - type: textarea
+    id: log
+    attributes:
+      label: Setup log
+      description: The relevant lines of %TEMP%\claude-severance-setup.log, if any.
+      render: text
