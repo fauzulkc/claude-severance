@@ -9,9 +9,10 @@ All notable changes to Claude Severance. The format follows [Keep a Changelog](h
 
 ### Changed
 - **New accounts' commands are their name followed by `claude`** (`acmeclaude`, `unityflowclaude`), and your normal Claude's is `myclaude`, instead of `claude-<name>`. Accounts that already exist keep their commands. When something on the computer already has the suggested name, a first install uses `claude-<name>` and says so.
+- **A fresh look for the 2.0 manager window.** Accounts are cards showing the command each one answers to. Choosing one opens its own page, beside the list in a wide window or in place of it in a narrow one. The page reads as plain phrases (Signs in as, Opens with) instead of a grid of labelled boxes.
 
 ### Fixed
-- 2.0 manager window: maximised or on a big screen, the accounts stay in a centred column instead of stretching across the screen. In a narrow window, launcher choices move under their description instead of cutting it short, and the wrong-email warning wraps instead of being cut off.
+- 2.0 manager window: maximised or on a big screen, the content no longer stretches across the whole screen. In a narrow window, shortcut choices move under their description instead of cutting it short, and the wrong-email warning wraps instead of being cut off. After saving, the footer no longer says there are unsaved changes.
 
 ## [2.0.0-preview.1] - 2026-11-10
 

@@ -12,21 +12,27 @@
 <header class="bar" data-tauri-drag-region>
   <svg class="mark small" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14"/><path class="solid" d="M 29,12 A 18,18 0 0 0 29,48 Z"/><path class="open" d="M 35,17.5 A 16.5,16.5 0 0 1 35,50.5 Z"/></svg>
   <span class="bar-title" data-tauri-drag-region>Claude Severance</span>
+  <span class="bar-ver" id="ver" data-tauri-drag-region></span>
   <span class="bar-tag" id="sandbox-tag" hidden>Preview</span>
   <span class="grow" data-tauri-drag-region></span>
   <button class="win" id="win-min" aria-label="Minimise"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button>
   <button class="win close" id="win-close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
 </header>
 
-<main>
+<main id="main">
   <section class="copy">
     <p class="eyebrow" id="eyebrow">Assignments</p>
     <h1 id="title"><span>Each account</span><span class="second">on its own floor.</span></h1>
-    <p class="lede" id="lede">Add, rename or remove accounts, and choose where each one's launchers go: one opens Claude Desktop, the other a terminal with its Claude Code.</p>
+    <p class="lede" id="lede">Pick an account to change its command, shortcuts and folders.</p>
   </section>
 
-  <section class="card" id="accounts" aria-label="Accounts"></section>
-  <button class="add-row" id="add"><span class="plus">+</span> Add an account</button>
+  <div class="panes" id="panes">
+    <div class="list-pane">
+      <section class="cards" id="accounts" aria-label="Accounts"></section>
+      <button class="add-row" id="add"><span class="plus" aria-hidden="true">+</span> Add an account</button>
+    </div>
+    <div class="sheet-pane" id="sheet-host"></div>
+  </div>
 
   <section class="steps" id="steps" hidden aria-live="polite"></section>
   <p class="notes" id="notes" hidden></p>
@@ -43,53 +49,67 @@
 
 <div class="toast" id="toast" role="status" hidden></div>
 
+<template id="empty">
+  <div class="empty"><p>Choose an account to change its command, shortcuts and folders, or add a new one.</p></div>
+</template>
+
 <template id="row">
-  <article class="account">
-    <button class="summary" aria-expanded="false">
-      <span class="tile"></span>
-      <span class="who"><span class="name"></span><span class="email"></span></span>
-      <span class="cmd"></span>
-      <span class="badge"></span>
-      <svg class="chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 2l3.5 3L3 8"/></svg>
-    </button>
-    <div class="detail" hidden>
-      <div class="grid">
-        <label>Name<input class="f-name" maxlength="40" spellcheck="false"></label>
-        <label>Email it signs in with<input class="f-email" type="email" spellcheck="false" placeholder="you@org.example"></label>
-        <label class="wide">Command in the terminal<input class="f-alias mono" spellcheck="false" autocapitalize="off"><span class="hint f-alias-hint"></span></label>
-        <label class="wide check f-main-row" hidden><input class="f-main" type="checkbox"><span><span class="c-name">This is my normal Claude</span><span class="hint">Uses the Claude Desktop and Claude Code you already have, instead of separate ones.</span></span></label>
-      </div>
+  <button class="account" aria-current="false">
+    <span class="tile"></span>
+    <span class="who"><span class="name"></span><span class="email"></span></span>
+    <span class="cmd"></span>
+    <span class="badge"></span>
+    <svg class="chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 2l3.5 3L3 8"/></svg>
+  </button>
+</template>
 
-      <div class="group">
-        <h3>Launchers</h3>
-        <div class="launcher" data-kind="app">
-          <div class="l-text"><span class="l-name">Desktop app</span><span class="l-desc">Claude Desktop as this account</span></div>
-          <div class="chips"><button class="chip" data-place="desktop">Desktop</button><button class="chip" data-place="startMenu">Start menu</button></div>
-          <button class="link open-now" data-open="app">Open</button>
-        </div>
-        <div class="launcher" data-kind="terminal">
-          <div class="l-text"><span class="l-name">Terminal</span><span class="l-desc t-desc"></span></div>
-          <div class="chips"><button class="chip" data-place="desktop">Desktop</button><button class="chip" data-place="startMenu">Start menu</button></div>
-          <button class="link open-now" data-open="terminal">Open</button>
-        </div>
-      </div>
+<template id="sheet">
+  <article class="sheet">
+    <button class="back"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M6.5 2L3 5l3.5 3"/></svg>All accounts</button>
+    <header class="sheet-head">
+      <span class="tile big"></span>
+      <span class="head-text">
+        <input class="f-name title-input" maxlength="40" spellcheck="false" placeholder="Name this account" aria-label="Account name">
+        <span class="email"></span>
+      </span>
+    </header>
 
-      <div class="group">
-        <h3>Folders <span class="h-note">Claude Code in these uses this account</span></h3>
-        <ul class="folders"></ul>
-        <button class="link add-folder">Add a folder</button>
-      </div>
+    <div class="lines">
+      <label class="line"><span class="l">Signs in as</span><input class="f-email" type="email" spellcheck="false" placeholder="you@org.example"></label>
+      <label class="line"><span class="l">Opens with</span><span class="prompt"><span class="caret" aria-hidden="true">&gt;</span><input class="f-alias mono" spellcheck="false" autocapitalize="off" aria-label="Command in the terminal"></span></label>
+      <p class="hint f-alias-hint"></p>
+      <label class="check f-main-row" hidden><input class="f-main" type="checkbox"><span><span class="c-name">This is my normal Claude</span><span class="hint">Uses the Claude Desktop and Claude Code you already have, instead of separate ones.</span></span></label>
+    </div>
 
-      <div class="group">
-        <h3>Tile</h3>
-        <div class="swatches"></div>
-        <div class="logo-row"><button class="link pick-logo">Use a logo</button><button class="link clear-logo" hidden>Back to the letter</button></div>
+    <section class="group">
+      <h3>Shortcuts</h3>
+      <div class="launcher" data-kind="app">
+        <div class="l-text"><span class="l-name">Desktop app</span><span class="l-desc">Claude Desktop as this account</span></div>
+        <div class="chips"><button class="chip" data-place="desktop">Desktop</button><button class="chip" data-place="startMenu">Start menu</button></div>
+        <button class="link open-now" data-open="app">Open</button>
       </div>
+      <div class="launcher" data-kind="terminal">
+        <div class="l-text"><span class="l-name">Terminal</span><span class="l-desc t-desc"></span></div>
+        <div class="chips"><button class="chip" data-place="desktop">Desktop</button><button class="chip" data-place="startMenu">Start menu</button></div>
+        <button class="link open-now" data-open="terminal">Open</button>
+      </div>
+    </section>
 
-      <div class="foot">
-        <button class="link danger remove">Remove this account</button>
-        <span class="main-note" hidden>Your normal Claude. Removing it only stops managing it: its login and history stay.</span>
-      </div>
+    <section class="group">
+      <h3>Folders that always use this account</h3>
+      <ul class="folders"></ul>
+      <button class="link add-folder">Add a folder</button>
+    </section>
+
+    <section class="group">
+      <h3>Colour</h3>
+      <div class="swatches"></div>
+      <div class="logo-row"><button class="link pick-logo">Use a logo</button><button class="link clear-logo" hidden>Back to the letter</button></div>
+    </section>
+
+    <div class="foot">
+      <button class="link danger remove">Remove this account</button>
+      <span class="main-note" hidden>Your normal Claude. Removing it only stops managing it: its login and history stay.</span>
     </div>
   </article>
 </template>

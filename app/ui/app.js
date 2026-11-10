@@ -3,7 +3,7 @@
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const el = {
-  list: $('#accounts'), add: $('#add'), save: $('#save'), close: $('#close'), steps: $('#steps'), notes: $('#notes'),
+  main: $('#main'), panes: $('#panes'), host: $('#sheet-host'), list: $('#accounts'), add: $('#add'), save: $('#save'), close: $('#close'), steps: $('#steps'), notes: $('#notes'),
   meta: $('#meta'), bar: $('#progress-bar'), toast: $('#toast'), eyebrow: $('#eyebrow'), title: $('#title'), lede: $('#lede'),
 };
 
@@ -50,6 +50,7 @@ async function load() {
   S.original = snapshot();
   S.removed = []; S.logoSources = {}; S.aliasError = {};
   $('#sandbox-tag').hidden = !info.sandbox;
+  $('#ver').textContent = info.version;
   setMoment('waiting');
   render();
 }
@@ -58,42 +59,69 @@ const snapshot = () => JSON.stringify({ a: S.accounts, r: S.removed, l: Object.k
 const dirty = () => snapshot() !== S.original;
 
 // ---------------- rendering ----------------
+// the list of accounts, and the open account's page beside it (wide window) or instead of it (narrow window)
+const cardOf = new WeakMap();
+let sheetFor = null; // the account the page shows
+
 function render() {
   el.list.replaceChildren(...S.accounts.map(rowFor));
+  const a = S.accounts.find((o) => o.id === S.openId && !S.removed.includes(o.id));
+  if (!a) S.openId = null;
+  el.main.toggleAttribute('data-open', !!a);
+  sheetFor = a || null;
+  if (a) {
+    const sheet = $('#sheet').content.firstElementChild.cloneNode(true);
+    el.host.replaceChildren(sheet);
+    fillDetail(sheet, a);
+    fillSummary(a);
+  } else {
+    el.host.replaceChildren($('#empty').content.firstElementChild.cloneNode(true));
+  }
   refresh();
 }
 
 function rowFor(a) {
   const node = $('#row').content.firstElementChild.cloneNode(true);
-  node.dataset.id = a.id;
-  const summary = $('.summary', node);
-  summary.addEventListener('click', () => toggle(a.id));
-  fillSummary(node, a);
-
+  cardOf.set(a, node);
+  node.addEventListener('click', () => toggle(a.id));
   const removed = S.removed.includes(a.id);
   node.classList.toggle('removed', removed);
-  const open = S.openId === a.id && !removed;
-  node.classList.toggle('open', open);
-  summary.setAttribute('aria-expanded', String(open));
-  $('.detail', node).hidden = !open;
-  if (open) fillDetail(node, a);
+  node.setAttribute('aria-current', String(S.openId === a.id && !removed));
+  if (removed) node.title = 'Removed when you save. Click to keep it.';
+  fillSummary(a);
   return node;
 }
 
-function fillSummary(node, a) {
-  paintTile($('.tile', node), a);
-  $('.name', node).textContent = a.name || 'New account';
+function status(a) {
   const si = S.signIn[a.id] || {};
-  const email = $('.email', node);
-  email.classList.remove('warn');
-  if (a.isNew) email.textContent = 'Not saved yet';
-  else if (si.check === 'WRONG ACCOUNT') { email.textContent = `Signed in as ${si.email}, not ${a.email}`; email.classList.add('warn'); }
-  else email.textContent = si.email ? `${si.email}${si.org ? ' · ' + si.org : ''}` : 'Not signed in yet';
-  $('.cmd', node).textContent = aliasOf(a);
-  const badge = $('.badge', node);
-  const gone = S.removed.includes(a.id);
-  badge.textContent = gone ? 'removed' : (a.main ? 'main' : '');
-  badge.classList.toggle('main', !!a.main && !gone);
+  if (a.isNew) return ['Not saved yet', false];
+  if (si.check === 'WRONG ACCOUNT') return [`Signed in as ${si.email}, not ${a.email}`, true];
+  return [si.email ? `${si.email}${si.org ? ', ' + si.org : ''}` : 'Not signed in yet', false];
+}
+
+// the account's card, and the page's heading when it's open
+function fillSummary(a) {
+  const [text, warn] = status(a);
+  const card = cardOf.get(a);
+  if (card) {
+    card.dataset.id = a.id;
+    paintTile($('.tile', card), a);
+    $('.name', card).textContent = a.name || 'New account';
+    const email = $('.email', card);
+    email.textContent = text; email.classList.toggle('warn', warn);
+    $('.cmd', card).textContent = aliasOf(a);
+    const badge = $('.badge', card);
+    const gone = S.removed.includes(a.id);
+    badge.textContent = gone ? 'Removed' : (a.main ? 'Main' : '');
+    badge.hidden = !badge.textContent;
+    badge.classList.toggle('main', !!a.main && !gone);
+  }
+  const sheet = sheetFor === a && $('.sheet', el.host);
+  if (sheet) {
+    paintTile($('.tile', sheet), a);
+    const email = $('.sheet-head .email', sheet);
+    email.textContent = text; email.classList.toggle('warn', warn);
+  }
 }
 
 function paintTile(tile, a) {
@@ -113,12 +141,12 @@ function fillDetail(node, a) {
     if (a.isNew) {
       const was = a.id;
       a.id = slug(a.name, S.accounts.filter((o) => o !== a).map((o) => o.id));
-      if (was !== a.id) { remap(was, a.id); node.dataset.id = a.id; if (!a.aliasTouched) { alias.value = aliasOf(a); checkAlias(a, node); } }
+      if (was !== a.id) { remap(was, a.id); if (!a.aliasTouched) { alias.value = aliasOf(a); checkAlias(a, node); } }
     }
-    fillSummary(node, a); refresh();
+    fillSummary(a); refresh();
   });
   email.addEventListener('input', () => { a.email = email.value.trim(); refresh(); });
-  alias.addEventListener('input', () => { a.alias = alias.value.trim().toLowerCase(); a.aliasTouched = true; fillSummary(node, a); checkAlias(a, node); refresh(); });
+  alias.addEventListener('input', () => { a.alias = alias.value.trim().toLowerCase(); a.aliasTouched = true; fillSummary(a); checkAlias(a, node); refresh(); });
   showAliasHint(node, a);
 
   // launchers
@@ -148,6 +176,7 @@ function fillDetail(node, a) {
       try { const msg = await api.open(kind, a.id); if (msg) toast(msg); } catch (e) { toast(String(e)); }
     });
   }
+  $('.back', node).addEventListener('click', () => toggle(a.id));
   $('.t-desc', node).textContent = `Claude Code, starting in ${a.paths && a.paths[0] ? a.paths[0] : 'your home folder'}`;
 
   // folders
@@ -178,7 +207,7 @@ function fillDetail(node, a) {
     b.addEventListener('click', () => {
       a.color = c;
       sw.querySelectorAll('.swatch').forEach((s) => s.setAttribute('aria-pressed', String(s === b)));
-      fillSummary(node, a); refresh();
+      fillSummary(a); refresh();
     });
     sw.append(b);
   }
@@ -189,12 +218,12 @@ function fillDetail(node, a) {
       const picked = await api.pickLogo();
       if (!picked) return;
       S.logoSources[a.id] = picked.path; S.logoData[a.id] = picked.dataUrl; a.logo = '';
-      clear.hidden = false; fillSummary(node, a); refresh();
+      clear.hidden = false; fillSummary(a); refresh();
     } catch (e) { toast(String(e)); }
   });
   clear.addEventListener('click', () => {
     delete S.logoSources[a.id]; delete S.logoData[a.id]; a.logo = '';
-    clear.hidden = true; fillSummary(node, a); refresh();
+    clear.hidden = true; fillSummary(a); refresh();
   });
 
   // your normal Claude: a new account can be it when no other account is
@@ -204,7 +233,7 @@ function fillDetail(node, a) {
   mainBox.addEventListener('change', () => {
     a.main = mainBox.checked;
     if (!a.aliasTouched) { alias.value = aliasOf(a); checkAlias(a, node); }
-    fillSummary(node, a); showAliasHint(node, a); refresh();
+    fillSummary(a); showAliasHint(node, a); refresh();
   });
 
   // remove
@@ -212,7 +241,7 @@ function fillDetail(node, a) {
   remove.textContent = a.main ? 'Stop managing this account' : 'Remove this account';
   $('.main-note', node).hidden = !a.main;
   remove.addEventListener('click', () => removeAccount(a));
-  setTimeout(() => (a.isNew ? name : null)?.focus(), 0);
+  if (a.isNew) setTimeout(() => name.focus(), 0);
 }
 
 function remap(from, to) {
@@ -223,9 +252,12 @@ function remap(from, to) {
 function toggle(id) {
   if (S.busy) return;
   if (S.removed.includes(id)) { undoRemove(id); return; }
-  S.openId = S.openId === id ? null : id;
+  const back = S.openId === id;
+  S.openId = back ? null : id;
   render();
-  if (S.openId) $(`.account[data-id="${S.openId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  // a narrow window shows the page instead of the list: start at its top, and coming back, show the card again
+  if (!back) el.main.scrollTop = Math.min(el.main.scrollTop, el.panes.offsetTop - 14);
+  else cardOf.get(S.accounts.find((o) => o.id === id))?.scrollIntoView({ block: 'nearest' });
 }
 
 // ---------------- command names ----------------
@@ -259,7 +291,7 @@ el.add.addEventListener('click', () => {
   S.accounts.push(a);
   S.openId = id;
   render();
-  $(`.account[data-id="${id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  el.host.scrollIntoView({ block: 'nearest' });
 });
 
 function removeAccount(a) {
@@ -302,9 +334,11 @@ function refresh() {
   const issues = problems();
   el.save.disabled = S.busy || !dirty() || issues.length > 0 || pending;
   el.save.title = issues.join(' ');
-  const facts = [S.info.version, `${live.length} account${live.length === 1 ? '' : 's'}`, S.info.autoSwitch ? 'auto-switch on' : 'auto-switch off'];
-  if (dirty()) facts.push(issues.length ? issues[0] : 'unsaved changes');
-  el.meta.textContent = facts.join('  ·  ');
+  const count = `${live.length} account${live.length === 1 ? '' : 's'}`;
+  el.meta.classList.toggle('warn', dirty() && issues.length > 0);
+  el.meta.textContent = dirty()
+    ? (issues.length ? issues[0] : 'Unsaved changes')
+    : `${count}, auto-switch ${S.info.autoSwitch ? 'on' : 'off'}`;
 }
 
 // ---------------- saving ----------------
@@ -325,14 +359,14 @@ el.save.addEventListener('click', async () => {
   };
   setMoment(S.removed.length ? 'removing' : 'working');
   copy('Procedure in progress', 'Setting the floors', 'up as you asked.', '');
-  el.list.hidden = true; el.add.hidden = true; el.notes.hidden = true;
+  el.panes.hidden = true; el.notes.hidden = true; el.main.removeAttribute('data-open');
   el.steps.replaceChildren(); el.steps.hidden = false;
   const total = live.length + 6 + (S.removed.length ? 1 : 0);
   let n = 0;
   await api.onStep((text) => {
     n += 1;
     const row = document.createElement('div');
-    const num = document.createElement('span'); num.className = 'n'; num.textContent = String(n).padStart(2, '0');
+    const num = document.createElement('span'); num.className = 'n'; num.setAttribute('aria-hidden', 'true');
     const t = document.createElement('span'); t.textContent = text;
     row.append(num, t); el.steps.append(row);
     el.bar.style.width = `${Math.min(96, (n / total) * 100)}%`;
@@ -342,6 +376,8 @@ el.save.addEventListener('click', async () => {
   try {
     const report = await api.save(req);
     S.original = snapshot();
+    refresh();
+    el.main.scrollTop = 0;
     el.bar.style.width = '100%';
     setMoment('done');
     copy('Procedure complete', 'Saved.', 'Each account is on its own floor.', 'Open a new terminal to use changed commands.');
@@ -375,10 +411,11 @@ async function finishBack() {
 }
 
 function showEditor() {
-  el.steps.hidden = true; el.notes.hidden = true; el.list.hidden = false; el.add.hidden = false;
+  el.steps.hidden = true; el.notes.hidden = true; el.panes.hidden = false;
   el.bar.style.width = '0';
   setMoment('waiting');
-  copy('Assignments', 'Each account', 'on its own floor.', "Add, rename or remove accounts, and choose where each one's launchers go: one opens Claude Desktop, the other a terminal with its Claude Code.");
+  copy('Assignments', 'Each account', 'on its own floor.', 'Pick an account to change its command, shortcuts and folders.');
+  render();
 }
 
 function copy(eyebrow, one, two, lede) {
@@ -428,5 +465,5 @@ document.addEventListener('keydown', (e) => {
 load().catch((e) => {
   setMoment('removing');
   copy('Out of order', "Claude Severance", "couldn't read your accounts.", String(e));
-  el.add.hidden = true;
+  el.panes.hidden = true;
 });
