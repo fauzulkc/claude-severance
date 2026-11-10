@@ -40,11 +40,9 @@ impl Config {
         }
     }
 
-    /// The same checks, and the same sentences, as 1.x.
+    /// The same checks, and the same sentences, as 1.x, except that 2.0 allows no main account, and no accounts at
+    /// all for a moment (org accounts only, before the first one is added)
     pub fn validate(&self) -> Result<()> {
-        if self.accounts.is_empty() {
-            bail!("accounts.json has no accounts.");
-        }
         let re = regex::Regex::new("^[a-z0-9][a-z0-9-]*$").expect("valid regex");
         for a in &self.accounts {
             if !re.is_match(&a.id) || a.id == "auto" {
@@ -60,8 +58,8 @@ impl Config {
         if ids.len() != self.accounts.len() {
             bail!("Account ids must be unique.");
         }
-        if self.accounts.iter().filter(|a| a.main).count() != 1 {
-            bail!("Exactly one account must be the main account.");
+        if self.accounts.iter().filter(|a| a.main).count() > 1 {
+            bail!("Only one account can be the main account.");
         }
         Ok(())
     }
@@ -89,11 +87,9 @@ impl Config {
         jsonfile::write(&paths.config(), self)
     }
 
-    pub fn main(&self) -> &Account {
-        self.accounts
-            .iter()
-            .find(|a| a.main)
-            .expect("validated: exactly one main account")
+    /// The main account (your normal Claude), when it's one of the accounts; some people only set up org accounts
+    pub fn main(&self) -> Option<&Account> {
+        self.accounts.iter().find(|a| a.main)
     }
 
     pub fn get(&self, id: &str) -> Result<&Account> {
@@ -172,8 +168,13 @@ mod tests {
     }
 
     #[test]
-    fn needs_exactly_one_main_account() {
-        let e = Config::new(vec![acct("a", false)]).validate().unwrap_err();
+    fn the_main_account_is_optional_but_single() {
+        let cfg = Config::new(vec![acct("a", false)]);
+        cfg.validate().unwrap();
+        assert!(cfg.main().is_none());
+        let e = Config::new(vec![acct("a", true), acct("b", true)])
+            .validate()
+            .unwrap_err();
         assert!(e.to_string().contains("main"));
     }
 
@@ -213,7 +214,7 @@ mod tests {
         }"##;
         let cfg: Config = serde_json::from_str(text).unwrap();
         cfg.validate().unwrap();
-        assert_eq!(cfg.main().id, "personal");
+        assert_eq!(cfg.main().unwrap().id, "personal");
         let acme = cfg.get("acme").unwrap();
         assert_eq!(acme.paths, vec!["D:\\work\\acme".to_string()]);
         assert_eq!(acme.email, "");

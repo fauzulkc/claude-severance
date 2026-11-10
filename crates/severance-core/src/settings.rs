@@ -76,10 +76,10 @@ pub fn remove_status_line(settings: &Path) -> Result<()> {
     Ok(())
 }
 
-/// All accounts share one Claude Code program, so they must agree on how it updates. Copies the main account's
+/// All accounts share one Claude Code program, so they must agree on how it updates. Copies your normal Claude Code's
 /// `autoUpdatesChannel` and `minimumVersion` to every extra account. Returns a note for each file it couldn't change.
 pub fn sync_update_settings(cfg: &Config, paths: &Paths) -> Vec<String> {
-    let Ok(main) = read_object(&cfg.main().code_dir(paths).join("settings.json")) else {
+    let Ok(main) = read_object(&paths.main_code_dir().join("settings.json")) else {
         return Vec::new();
     };
     let keys = ["autoUpdatesChannel", "minimumVersion"];

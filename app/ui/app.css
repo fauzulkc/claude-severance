@@ -144,6 +144,10 @@ h3 { margin: 0 0 8px; font: 500 11px PlexMono, monospace; letter-spacing: .1em; 
 .logo-row { margin-top: 8px; display: flex; gap: 14px; }
 .foot { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hairline); display: flex; align-items: center; gap: 10px; }
 .main-note { font-size: 12px; color: var(--subtle); }
+label.check { flex-direction: row; align-items: flex-start; gap: 9px; cursor: pointer; }
+label.check input { height: 16px; width: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--signal); }
+label.check > span { display: flex; flex-direction: column; gap: 2px; }
+label.check .c-name { color: var(--ink); font-size: 12.5px; }
 
 .add-row { margin-top: 10px; width: 100%; height: 44px; border: 1px dashed var(--hairline); border-radius: 8px; background: none;
   color: var(--muted); font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px; }

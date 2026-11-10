@@ -144,13 +144,13 @@ cat "$rc"
 grep -q '# >>> claude-severance >>>' "$rc" || fail "no auto-switch block in $rc"
 for sh in $shells; do
   : > "$log"
-  out="$(cd "$work/acme-project" && "$sh" -ic 'type claude; command -v claude-acme; claude --version' 2>&1)" || { echo "$out"; fail "$sh: commands failed"; }
+  out="$(cd "$work/acme-project" && "$sh" -ic 'type claude; command -v acmeclaude; claude --version' 2>&1)" || { echo "$out"; fail "$sh: commands failed"; }
   echo "$out"
-  grep -q "$root/bin/claude-acme" <<<"$out" || fail "$sh: claude-acme isn't on PATH"
+  grep -q "$root/bin/acmeclaude" <<<"$out" || fail "$sh: acmeclaude isn't on PATH"
   grep -q "^code config=$root/code/acme .*args=--version" "$log" || fail "$sh: claude in Acme's folder didn't pick Acme"
   : > "$log"
-  (cd "$HOME" && "$sh" -ic 'claude-personal -p hi' >/dev/null 2>&1) || fail "$sh: claude-personal failed"
-  grep -q "^code config=main .*args=-p hi" "$log" || fail "$sh: claude-personal didn't use the main account"
+  (cd "$HOME" && "$sh" -ic 'myclaude -p hi' >/dev/null 2>&1) || fail "$sh: myclaude failed"
+  grep -q "^code config=main .*args=-p hi" "$log" || fail "$sh: myclaude didn't use the main account"
   pass "$sh: PATH, account commands and auto-switch work"
 done
 

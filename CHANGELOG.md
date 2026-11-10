@@ -4,6 +4,12 @@ All notable changes to Claude Severance. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- **Org accounts only.** Your normal Claude no longer has to be one of the accounts. Leave it out with `severance install --no-personal`, remove it later with `severance remove personal` or in the manager window (Stop managing this account), and bring it back with `severance add <name> --main` or the window's "This is my normal Claude" box. Leaving it out keeps its login, history and settings as they are; only its launchers, its command and the account badge go.
+
+### Changed
+- **New accounts' commands are their name followed by `claude`** (`acmeclaude`, `unityflowclaude`), and your normal Claude's is `myclaude`, instead of `claude-<name>`. Accounts that already exist keep their commands. When something on the computer already has the suggested name, a first install uses `claude-<name>` and says so.
+
 ## [2.0.0-preview.1] - 2026-11-10
 
 The first preview of 2.0, the Rust rewrite: Claude Severance on macOS and Linux, a manager window, and launchers per account. Tested on fresh GitHub Windows, macOS and Linux machines, but not yet on a real Mac or Linux desktop. 1.1.0 stays the stable Windows release.

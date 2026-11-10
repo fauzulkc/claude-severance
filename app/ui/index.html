@@ -57,6 +57,7 @@
         <label>Name<input class="f-name" maxlength="40" spellcheck="false"></label>
         <label>Email it signs in with<input class="f-email" type="email" spellcheck="false" placeholder="you@org.example"></label>
         <label class="wide">Command in the terminal<input class="f-alias mono" spellcheck="false" autocapitalize="off"><span class="hint f-alias-hint"></span></label>
+        <label class="wide check f-main-row" hidden><input class="f-main" type="checkbox"><span><span class="c-name">This is my normal Claude</span><span class="hint">Uses the Claude Desktop and Claude Code you already have, instead of separate ones.</span></span></label>
       </div>
 
       <div class="group">
@@ -87,7 +88,7 @@
 
       <div class="foot">
         <button class="link danger remove">Remove this account</button>
-        <span class="main-note" hidden>Your main account stays. To go back to one Claude, uninstall instead.</span>
+        <span class="main-note" hidden>Your normal Claude. Removing it only stops managing it: its login and history stay.</span>
       </div>
     </div>
   </article>

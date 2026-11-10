@@ -22,7 +22,10 @@ const S = {
 };
 
 const DEFAULT_LAUNCHERS = () => ({ app: { desktop: true, startMenu: true }, terminal: { desktop: false, startMenu: true } });
-const aliasOf = (a) => (a.alias && a.alias.trim() ? a.alias.trim().toLowerCase() : `claude-${a.id}`);
+// new accounts start as <name>claude (your normal Claude: myclaude); accounts saved before 2.0 without one keep claude-<id>
+const suggestedAlias = (a) => (a.main ? 'myclaude' : `${a.id.replace(/-/g, '')}claude`);
+const aliasOf = (a) => (a.alias && a.alias.trim() ? a.alias.trim().toLowerCase() : (a.isNew ? suggestedAlias(a) : `claude-${a.id}`));
+const liveMain = (except) => S.accounts.find((o) => o !== except && o.main && !S.removed.includes(o.id));
 const firstLetter = (name) => ((name.match(/[A-Za-z0-9]/) || ['?'])[0]).toUpperCase();
 const isDark = (hex) => {
   const h = (hex || '#888888').replace('#', '');
@@ -88,8 +91,9 @@ function fillSummary(node, a) {
   else email.textContent = si.email ? `${si.email}${si.org ? ' · ' + si.org : ''}` : 'Not signed in yet';
   $('.cmd', node).textContent = aliasOf(a);
   const badge = $('.badge', node);
-  badge.textContent = a.main ? 'main' : (S.removed.includes(a.id) ? 'removed' : '');
-  badge.classList.toggle('main', !!a.main);
+  const gone = S.removed.includes(a.id);
+  badge.textContent = gone ? 'removed' : (a.main ? 'main' : '');
+  badge.classList.toggle('main', !!a.main && !gone);
 }
 
 function paintTile(tile, a) {
@@ -193,9 +197,19 @@ function fillDetail(node, a) {
     clear.hidden = true; fillSummary(node, a); refresh();
   });
 
+  // your normal Claude: a new account can be it when no other account is
+  const mainRow = $('.f-main-row', node), mainBox = $('.f-main', node);
+  mainRow.hidden = !a.isNew || !!liveMain(a);
+  mainBox.checked = !!a.main;
+  mainBox.addEventListener('change', () => {
+    a.main = mainBox.checked;
+    if (!a.aliasTouched) { alias.value = aliasOf(a); checkAlias(a, node); }
+    fillSummary(node, a); showAliasHint(node, a); refresh();
+  });
+
   // remove
   const remove = $('.remove', node);
-  remove.hidden = !!a.main;
+  remove.textContent = a.main ? 'Stop managing this account' : 'Remove this account';
   $('.main-note', node).hidden = !a.main;
   remove.addEventListener('click', () => removeAccount(a));
   setTimeout(() => (a.isNew ? name : null)?.focus(), 0);
@@ -256,10 +270,15 @@ function removeAccount(a) {
   S.removed.push(a.id);
   S.openId = null;
   render();
-  toast(`${a.name} will be removed when you save. Its memory and history are zipped first, without its login.`, 'Undo', () => undoRemove(a.id));
+  toast(a.main
+    ? `${a.name} will no longer be managed when you save. Your normal Claude, its login and history stay as they are.`
+    : `${a.name} will be removed when you save. Its memory and history are zipped first, without its login.`, 'Undo', () => undoRemove(a.id));
 }
 
 function undoRemove(id) {
+  // a new account may have become your normal Claude meanwhile
+  const a = S.accounts.find((o) => o.id === id);
+  if (a && a.main && liveMain(a)) { toast(`${liveMain(a).name} is your normal Claude now.`); return; }
   S.removed = S.removed.filter((r) => r !== id);
   render(); hideToast();
 }

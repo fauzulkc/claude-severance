@@ -351,9 +351,115 @@ fn a_first_install_makes_a_personal_main_account_from_who_is_signed_in() {
     );
     let src = programs(t.path());
     install::install(&paths, &sb, &NoClash, request(accounts, src), &mut |_| {}).unwrap();
-    assert!(shim(&paths, "claude-personal").exists());
+    assert!(shim(&paths, "myclaude").exists());
     // the main account keeps Claude's normal folders: no extra data folders for it
     assert!(!paths.code_dir("personal").exists() && !paths.desktop_dir("personal").exists());
+}
+
+/// Something on the computer already has this name
+struct Taken(&'static str);
+impl CommandProbe for Taken {
+    fn find(&self, name: &str) -> Option<String> {
+        (name == self.0).then(|| "somewhere else".into())
+    }
+}
+
+#[test]
+fn a_taken_suggested_command_falls_back_to_claude_id() {
+    let t = tempfile::tempdir().unwrap();
+    let sb = Sandbox::new(t.path());
+    let paths = sb.paths();
+    let accounts = vec![
+        Account::new("Personal", "", &[], true, &[], 0),
+        Account::new("Acme", "", &[], false, &["personal"], 1),
+    ];
+    let src = programs(t.path());
+    let report = install::install(
+        &paths,
+        &sb,
+        &Taken("myclaude"),
+        request(accounts, src),
+        &mut |_| {},
+    )
+    .unwrap();
+    assert!(shim(&paths, "claude-personal").exists() && shim(&paths, "acmeclaude").exists());
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|n| n.contains("myclaude is already taken")),
+        "{:?}",
+        report.notes
+    );
+    // a name the user chose is never swapped: it stops the install instead
+    let mut chosen = Account::new("Globex", "", &[], false, &[], 0);
+    chosen.alias = "myclaude".into();
+    let src = programs(t.path());
+    assert!(
+        install::install(
+            &paths,
+            &sb,
+            &Taken("myclaude"),
+            request(vec![chosen], src),
+            &mut |_| {}
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn org_accounts_only_leave_your_normal_claude_alone() {
+    let t = tempfile::tempdir().unwrap();
+    let sb = Sandbox::new(t.path());
+    let paths = sb.paths();
+    let src = programs(t.path());
+    let accounts = vec![
+        Account::new("Personal", "", &[], true, &[], 0),
+        Account::new("Acme", "", &[], false, &["personal"], 1),
+    ];
+    install::install(
+        &paths,
+        &sb,
+        &NoClash,
+        request(accounts.clone(), src.clone()),
+        &mut |_| {},
+    )
+    .unwrap();
+    let normal = paths.main_code_dir().join("settings.json");
+    assert!(
+        std::fs::read_to_string(&normal)
+            .unwrap()
+            .contains("statusLine")
+    );
+    std::fs::write(paths.main_code_dir().join("CLAUDE.md"), "mine").unwrap();
+
+    // leave Personal out: only Acme is managed, and your normal Claude keeps its files but loses the badge
+    let mut req = request(vec![accounts[1].clone()], src);
+    req.removed_ids = vec!["personal".into()];
+    let mut steps = Vec::new();
+    install::install(&paths, &sb, &NoClash, req, &mut |s| {
+        steps.push(s.to_string())
+    })
+    .unwrap();
+    assert!(
+        steps
+            .iter()
+            .any(|s| s.contains("Stopped managing Personal")),
+        "{steps:?}"
+    );
+    assert!(!steps.iter().any(|s| s.contains("Backed up")), "{steps:?}");
+    assert!(!shim(&paths, "myclaude").exists() && shim(&paths, "acmeclaude").exists());
+    assert_eq!(
+        std::fs::read_to_string(paths.main_code_dir().join("CLAUDE.md")).unwrap(),
+        "mine"
+    );
+    assert!(
+        !std::fs::read_to_string(&normal)
+            .unwrap()
+            .contains("statusLine")
+    );
+    let cfg = severance_core::Config::load(&paths).unwrap();
+    assert!(cfg.main().is_none() && cfg.accounts.len() == 1);
 }
 
 #[test]

@@ -399,6 +399,25 @@ pub fn install(
         }
         accounts.push(a);
     }
+    // a new account still on its suggested command falls back to claude-<id> when something else has that name,
+    // so a first install never stops over a name nobody chose
+    for i in 0..accounts.len() {
+        let a = &accounts[i];
+        let is_new = old.as_ref().is_none_or(|o| o.get(&a.id).is_err());
+        if is_new
+            && a.alias == account::suggested_alias(&a.id, a.main)
+            && alias::check(&a.alias, &a.id, &accounts, probe).is_some()
+        {
+            let fallback = account::default_alias(&a.id);
+            if alias::check(&fallback, &a.id, &accounts, probe).is_none() {
+                notes.push(format!(
+                    "{} is already taken, so {} uses {fallback}. Rename it with 'severance alias'.",
+                    a.alias, a.name
+                ));
+                accounts[i].alias = fallback;
+            }
+        }
+    }
     for a in &accounts {
         if let Some(why) = alias::check(&a.alias, &a.id, &accounts, probe) {
             bail!("The command for {} can't be {}: {why}", a.name, a.alias);
@@ -411,10 +430,25 @@ pub fn install(
     }
     cfg.validate()?;
 
+    // the main account's data is your normal Claude, so leaving it out only stops managing it
+    let was = |id: &str| old.as_ref().and_then(|o| o.get(id).ok());
+    let gone = |id: &&String| !id.is_empty() && cfg.get(id).is_err();
+    if let Some(m) = req
+        .removed_ids
+        .iter()
+        .filter(gone)
+        .find_map(|id| was(id).filter(|a| a.main))
+    {
+        step(&format!(
+            "Stopped managing {}; your normal Claude is left as it is",
+            m.name
+        ));
+    }
     let removed: Vec<String> = req
         .removed_ids
         .iter()
-        .filter(|id| !id.is_empty() && cfg.get(id).is_err())
+        .filter(gone)
+        .filter(|id| was(id).is_some_and(|a| !a.main))
         .cloned()
         .collect();
     if !removed.is_empty() {
@@ -515,7 +549,11 @@ pub fn install(
     }
 
     // ---- accounts ----
-    let main_code = cfg.main().code_dir(paths);
+    let main_code = paths.main_code_dir();
+    if cfg.main().is_none() {
+        // nothing manages your normal Claude Code, so it shouldn't show an account badge
+        settings::remove_status_line(&main_code.join("settings.json"))?;
+    }
     let launcher = bin.join(platform::exe_name("severancew"));
     let exe = bin.join(platform::exe_name("severance"));
     for a in &cfg.accounts {
@@ -758,7 +796,8 @@ pub fn uninstall(
         kept_data: !remove_data && !extras.is_empty(),
         main_name: cfg
             .as_ref()
-            .map(|c| c.main().name.clone())
+            .and_then(|c| c.main())
+            .map(|a| a.name.clone())
             .unwrap_or_else(|| "Your main account".into()),
         extras: extras.into_iter().map(|a| a.name).collect(),
     })

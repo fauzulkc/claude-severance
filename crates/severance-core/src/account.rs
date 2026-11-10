@@ -22,7 +22,7 @@ pub struct Account {
     /// A file name in the logos folder, or empty for the lettered shell
     #[serde(default, deserialize_with = "string_or_null")]
     pub logo: String,
-    /// The terminal command; empty means the default, claude-<id>
+    /// The terminal command; empty means claude-<id>, the default before 2.0 (new accounts get `suggested_alias`)
     #[serde(default, deserialize_with = "string_or_null")]
     pub alias: String,
     /// The email this account should be signed in with (for the wrong-account warning)
@@ -135,6 +135,7 @@ impl Account {
             label: new_label(name),
             color: PALETTE[index % PALETTE.len()].to_string(),
             email: email.trim().to_string(),
+            alias: suggested_alias(&new_id(name, existing_ids), main),
             main,
             paths: paths
                 .iter()
@@ -227,8 +228,19 @@ impl Account {
     }
 }
 
+/// The command of an account saved without one (every account before 2.0)
 pub fn default_alias(id: &str) -> String {
     format!("claude-{id}")
+}
+
+/// The command a new account starts with: `myclaude` for your normal Claude, else the id without dashes and then
+/// "claude" (acme: `acmeclaude`)
+pub fn suggested_alias(id: &str, main: bool) -> String {
+    if main {
+        "myclaude".into()
+    } else {
+        format!("{}claude", id.replace('-', ""))
+    }
 }
 
 /// A lowercase slug of the name, numbered when it clashes; never empty and never "auto"
@@ -339,6 +351,26 @@ mod tests {
         assert_eq!(a.alias(), "claude-globex");
         a.alias = "GX".into();
         assert_eq!(a.alias(), "gx");
+    }
+
+    #[test]
+    fn new_accounts_get_name_then_claude() {
+        assert_eq!(
+            Account::new("Acme", "", &[], false, &[], 0).alias(),
+            "acmeclaude"
+        );
+        assert_eq!(
+            Account::new("Unity Flow AI", "", &[], false, &[], 0).alias(),
+            "unityflowaiclaude"
+        );
+        assert_eq!(
+            Account::new("Personal", "", &[], true, &[], 0).alias(),
+            "myclaude"
+        );
+        assert_eq!(
+            Account::new("Acme", "", &[], false, &["acme"], 0).alias(),
+            "acme2claude"
+        );
     }
 
     #[test]

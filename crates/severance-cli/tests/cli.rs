@@ -4,8 +4,23 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 fn severance(sandbox: &Path, args: &[&str]) -> Output {
+    // leave out a real install's commands, so the names checked are the same on every computer
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let path = std::env::join_paths(std::env::split_paths(&path).filter(|d| {
+        let d = d.to_string_lossy().to_lowercase().replace('\\', "/");
+        let d = d.trim_end_matches('/');
+        ![
+            "claudeseverance/bin",
+            "claude severance/bin",
+            "claude-severance/bin",
+        ]
+        .iter()
+        .any(|real| d.ends_with(real))
+    }))
+    .unwrap();
     Command::new(env!("CARGO_BIN_EXE_severance"))
         .args(args)
+        .env("PATH", path)
         .env("SEVERANCE_SANDBOX", sandbox)
         .env_remove("CLAUDE_CONFIG_DIR")
         .output()
@@ -59,7 +74,19 @@ fn the_whole_command_line_in_a_sandbox() {
             .contains("already the command for Acme Corp")
     );
     assert!(fails(sb, &["add", "Globex", "--alias", "dir"]).contains("taken by Windows or Claude"));
-    assert!(fails(sb, &["remove", "personal", "--yes"]).contains("main account and stays"));
+    let shim_of = |name: &str| {
+        sb.join("ClaudeSeverance")
+            .join("bin")
+            .join(if cfg!(windows) {
+                format!("{name}.cmd")
+            } else {
+                name.to_string()
+            })
+    };
+    assert!(
+        shim_of("myclaude").exists(),
+        "your normal Claude gets myclaude"
+    );
 
     let list = ok(sb, &["list"]);
     assert!(
@@ -141,9 +168,36 @@ fn the_whole_command_line_in_a_sandbox() {
     );
     assert!(!shim.exists());
 
+    // your normal Claude can be left out, then come back
+    let out = ok(sb, &["remove", "personal", "--yes"]);
+    assert!(out.contains("Stopped managing Personal"), "{out}");
+    assert!(!out.contains("Backed up"), "{out}");
+    assert!(!shim_of("myclaude").exists());
+    let out = ok(sb, &["add", "Personal", "--main"]);
+    assert!(out.contains("with the command myclaude"), "{out}");
+    assert!(fails(sb, &["add", "Home", "--main"]).contains("already your normal Claude"));
+
     let out = ok(sb, &["uninstall", "--yes"]);
     assert!(out.contains("Personal stays your normal Claude"), "{out}");
     assert!(!sb.join("ClaudeSeverance").join("bin").exists());
 
     assert!(ok(sb, &["version"]).contains(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn org_accounts_only() {
+    let t = tempfile::tempdir().unwrap();
+    let sb = t.path();
+    ok(sb, &["install", "--no-personal", "--no-desktop-shortcuts"]);
+    let out = ok(sb, &["add", "Unity Flow", "--email", "me@unity.example"]);
+    assert!(out.contains("with the command unityflowclaude"), "{out}");
+    let list = ok(sb, &["list"]);
+    assert!(
+        list.contains("Unity Flow") && !list.contains("Personal"),
+        "{list}"
+    );
+    let run = ok(sb, &["run", "unity-flow"]);
+    assert!(run.contains("Unity Flow"), "{run}");
+    let out = ok(sb, &["uninstall", "--yes"]);
+    assert!(!sb.join("ClaudeSeverance").join("bin").exists(), "{out}");
 }

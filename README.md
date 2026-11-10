@@ -68,6 +68,8 @@ Version 2.0 is a rewrite in Rust that runs on Windows, macOS and Linux. It's a *
 
 3. Open a new terminal, then add an account per org: `severance add Acme --email you@acme.com --folder ~/clients/acme`, or open the manager window with `severance setup`.
 
+In 2.0, an account's command is its name followed by `claude` (Acme gets `acmeclaude`), and your normal Claude gets `myclaude`; rename any of them with `severance alias`. Accounts from 1.x keep the commands they have. Only need org accounts? Install with `./severance install --no-personal`, or remove Personal later. That only stops managing your normal Claude: its login and history stay where they are.
+
 | | macOS | Linux |
 |---|---|---|
 | Launchers | `.app` launchers in `~/Applications/Claude Severance` and on the desktop | `.desktop` launchers in the app menu and on the desktop |

@@ -68,14 +68,14 @@ pub fn status(cfg: &Config, paths: &Paths) -> Vec<Status> {
         .collect()
 }
 
-/// The account a `CLAUDE_CONFIG_DIR` value belongs to (unset or empty: the main account)
+/// The account a `CLAUDE_CONFIG_DIR` value belongs to (unset or empty: the main account, if there is one)
 pub fn account_for_config_dir<'a>(
     cfg: &'a Config,
     paths: &Paths,
     config_dir: Option<&str>,
 ) -> Option<&'a Account> {
     let Some(dir) = config_dir.filter(|d| !d.trim().is_empty()) else {
-        return Some(cfg.main());
+        return cfg.main();
     };
     let want = crate::paths::comparable(Path::new(dir));
     cfg.accounts

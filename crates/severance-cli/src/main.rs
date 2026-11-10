@@ -72,7 +72,7 @@ enum Command {
     /// Show every account, its command, and who it is signed in as
     #[command(alias = "status")]
     List,
-    /// Add an org account (its command defaults to claude-<name>)
+    /// Add an org account (its command defaults to <name>claude, for example acmeclaude)
     Add {
         /// The account's name, for example Acme
         #[arg(required = true, num_args = 1..)]
@@ -89,6 +89,9 @@ enum Command {
         /// An image for its icon (PNG, JPG, BMP, GIF or ICO)
         #[arg(long, value_name = "FILE")]
         logo: Option<PathBuf>,
+        /// This is your normal Claude (the usual ~/.claude and Claude Desktop), not a separate account
+        #[arg(long)]
+        main: bool,
     },
     /// Remove an account; its memory and history are zipped first, without its login
     Remove {
@@ -132,6 +135,9 @@ enum Command {
         /// Install Claude Code first, with Anthropic's installer
         #[arg(long)]
         install_code: bool,
+        /// Set up org accounts only: don't add your normal Claude as the Personal account
+        #[arg(long)]
+        no_personal: bool,
     },
     /// Set everything up again with the current accounts and choices
     Repair,
@@ -217,7 +223,8 @@ fn dispatch(cli: Cli) -> Result<()> {
             alias,
             folders,
             logo,
-        } => add(&ctx, &name.join(" "), email, alias, folders, logo),
+            main,
+        } => add(&ctx, &name.join(" "), email, alias, folders, logo, main),
         Command::Remove { account, yes } => remove(&ctx, &account, yes),
         Command::Alias { account, command } => rename_alias(&ctx, &account, &command),
         Command::Open { account } => open(&ctx, &account),
@@ -233,9 +240,19 @@ fn dispatch(cli: Cli) -> Result<()> {
             allow_scripts,
             install_desktop,
             install_code,
+            no_personal,
         } => {
-            let accounts = install::current_or_first_accounts(&ctx.paths)?;
             let fresh = Config::load_if_present(&ctx.paths)?.is_none();
+            let accounts = if fresh && no_personal {
+                Vec::new()
+            } else {
+                install::current_or_first_accounts(&ctx.paths)?
+            };
+            if no_personal && !fresh {
+                say!(
+                    "[2mAlready set up, so --no-personal changes nothing. To stop managing your normal Claude, run 'severance remove <account>'.[0m"
+                );
+            }
             save(
                 &ctx,
                 accounts,
@@ -356,9 +373,16 @@ fn add(
     alias: Option<String>,
     folders: Vec<String>,
     logo: Option<PathBuf>,
+    main: bool,
 ) -> Result<()> {
     let cfg = Config::load(&ctx.paths)?;
     let name = name.trim();
+    if let Some(m) = cfg.main().filter(|_| main) {
+        bail!(
+            "{} is already your normal Claude. Only one account can be.",
+            m.name
+        );
+    }
     if cfg
         .accounts
         .iter()
@@ -371,7 +395,7 @@ fn add(
         name,
         email.as_deref().unwrap_or_default(),
         &folders,
-        false,
+        main,
         &ids,
         cfg.accounts.len(),
     );
@@ -412,10 +436,19 @@ fn remove(ctx: &Ctx, key: &str, yes: bool) -> Result<()> {
     let cfg = Config::load(&ctx.paths)?;
     let a = cfg.find(key)?.clone();
     if a.main {
-        bail!(
-            "{} is your main account and stays. To go back to one Claude, run 'severance uninstall'.",
-            a.name
-        );
+        // your normal Claude: only stop managing it, its data stays where it is
+        if !yes
+            && !confirm(&format!(
+                "Stop managing {}? Your normal Claude, its login and history stay as they are; only its launchers and {} go.",
+                a.name,
+                a.alias()
+            ))?
+        {
+            say!("Kept.");
+            return Ok(());
+        }
+        let keep = cfg.accounts.into_iter().filter(|x| x.id != a.id).collect();
+        return save(ctx, keep, Vec::new(), vec![a.id], Choices::current(ctx));
     }
     if !yes
         && !confirm(&format!(
