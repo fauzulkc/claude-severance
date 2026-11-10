@@ -170,11 +170,11 @@ if [ -x "$root/bin/ClaudeSeverance" ]; then
     Xvfb :99 -screen 0 1280x900x24 -nolisten tcp & xvfb=$!
     sleep 2
     # Xvfb has no GPU, so WebKitGTK renders in software
-    DISPLAY=:99 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
+    DISPLAY=:99 SEVERANCE_DEBUG=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
       "$root/bin/ClaudeSeverance" > "$out_dir/manager-linux.log" 2>&1 & pid=$!
     sleep 15
     alive=yes; kill -0 "$pid" 2>/dev/null || alive=no
-    echo "--- windows on the display"; DISPLAY=:99 xwininfo -root -tree | grep -v 'has no name' | head -30 || true
+    echo "--- windows on the display"; DISPLAY=:99 xwininfo -root -tree | head -40 || true
     DISPLAY=:99 import -window root "$out_dir/manager-linux.png" || true
     kill "$pid" "$xvfb" 2>/dev/null || true
     echo "--- the window's output"; cat "$out_dir/manager-linux.log"

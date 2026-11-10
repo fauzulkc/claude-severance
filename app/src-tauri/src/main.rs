@@ -341,6 +341,11 @@ fn main() {
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Claude Severance")
+                    .on_page_load(|_, p| {
+                        if std::env::var_os("SEVERANCE_DEBUG").is_some() {
+                            eprintln!("severance: page {:?} {}", p.event(), p.url());
+                        }
+                    })
                     .inner_size(560.0, 720.0)
                     .min_inner_size(480.0, 560.0)
                     .decorations(false)
@@ -349,6 +354,16 @@ fn main() {
                     .build()?;
             if let Some(icon) = app.default_window_icon().cloned() {
                 let _ = window.set_icon(icon);
+            }
+            // SEVERANCE_DEBUG=1 reports how the window came up (CI uses it on Linux)
+            if std::env::var_os("SEVERANCE_DEBUG").is_some() {
+                eprintln!(
+                    "severance: window built, visible={:?} size={:?} position={:?} monitor={:?}",
+                    window.is_visible(),
+                    window.outer_size(),
+                    window.outer_position(),
+                    window.current_monitor().map(|m| m.map(|m| *m.size()))
+                );
             }
             let _ = app.get_webview_window("main");
             Ok(())
