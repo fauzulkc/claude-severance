@@ -310,7 +310,15 @@ fn preview_sandbox() -> anyhow::Result<PathBuf> {
     Ok(dir)
 }
 
+/// A line on stderr when `SEVERANCE_DEBUG` is set
+fn debug(what: &str) {
+    if std::env::var_os("SEVERANCE_DEBUG").is_some() {
+        eprintln!("severance: {what}");
+    }
+}
+
 fn main() {
+    debug("starting");
     let args: Vec<String> = std::env::args().skip(1).collect();
     let sandbox = if args.iter().any(|a| a == "--preview") {
         Some(preview_sandbox().expect("a preview folder"))
@@ -338,6 +346,7 @@ fn main() {
             open_launcher
         ])
         .setup(|app| {
+            debug("setup started, building the window");
             let window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Claude Severance")
