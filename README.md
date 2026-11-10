@@ -9,11 +9,12 @@
   <a href="https://github.com/fauzulkc/claude-severance/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/fauzulkc/claude-severance?label=release&color=221F19"></a>
   <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-221F19">
   <img alt="PowerShell 5.1" src="https://img.shields.io/badge/PowerShell-5.1%2B-221F19">
+  <a href="#macos-and-linux-20-preview"><img alt="macOS and Linux: preview" src="https://img.shields.io/badge/macOS%20%7C%20Linux-preview-8A6D3B"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-221F19"></a>
   <a href="https://github.com/fauzulkc/claude-severance/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fauzulkc/claude-severance/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 
-**Claude Severance** runs your personal and org Claude accounts at the same time on one Windows PC. Your personal account stays your normal Claude. Each org account gets its own Claude Desktop window and its own `claude` command, with its own login, chats and Claude Code memory.
+**Claude Severance** runs your personal and org Claude accounts at the same time on one Windows PC. Your personal account stays your normal Claude. Each org account gets its own Claude Desktop window and its own `claude` command, with its own login, chats and Claude Code memory. **macOS and Linux** are in the [2.0 preview](#macos-and-linux-20-preview).
 
 - **Signed in everywhere at once.** Every account runs in its own window, at the same time. Switching accounts never signs another one out.
 - **Separate context.** Each account keeps its own Claude Code memory, `CLAUDE.md`, settings, MCP servers, skills and history.
@@ -50,6 +51,32 @@ One seam splits the window into the work floor and the outside. The light runnin
 > **Signing in to a new account.** The browser sends the sign-in link to your *main* Claude. Copy the code it shows, press **Cancel** there, and paste the code into the new account's window. For Claude Code, run `claude-<account>` and type `/login`.
 
 Requirements: Windows 10 or 11, Windows PowerShell 5.1 (built in), and [Claude Desktop](https://claude.ai/download). Setup can install Claude Desktop (through winget) and [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) for you.
+
+## macOS and Linux (2.0 preview)
+
+Version 2.0 is a rewrite in Rust that runs on Windows, macOS and Linux. It's a **preview**: every part of it is tested on fresh GitHub macOS and Linux machines on each change, but it hasn't been used on a real Mac or Linux desktop yet, signing in included. Please [open an issue](https://github.com/fauzulkc/claude-severance/issues) with what works and what doesn't.
+
+1. Download the archive for your system from the [2.0 preview release](https://github.com/fauzulkc/claude-severance/releases/tag/v2.0.0-preview.1): `macos-universal` (Apple silicon and Intel), `linux-x86_64` or `linux-aarch64`.
+2. Extract it and install from a terminal:
+
+   ```bash
+   tar -xzf ClaudeSeverance-2.0.0-preview.1-*.tar.gz
+   cd ClaudeSeverance-2.0.0-preview.1-*/
+   xattr -dr com.apple.quarantine .     # macOS only: the preview isn't signed yet
+   ./severance install
+   ```
+
+3. Open a new terminal, then add an account per org: `severance add Acme --email you@acme.com --folder ~/clients/acme`, or open the manager window with `severance setup`.
+
+| | macOS | Linux |
+|---|---|---|
+| Launchers | `.app` launchers in `~/Applications/Claude Severance` and on the desktop | `.desktop` launchers in the app menu and on the desktop |
+| Claude Desktop | `Claude.app`, each account with its own data folder | A `claude-desktop` program on your PATH, if there is one. Without it, accounts get terminal launchers only. |
+| Terminal | Terminal.app | `$TERMINAL`, else the first terminal found (GNOME Terminal, Konsole, kitty, Alacritty, xterm and others) |
+| Commands and auto-switch | `~/.zshrc` (and `~/.bashrc` if you have one) | `~/.bashrc` (and `~/.zshrc` if you have one) |
+| Install folder | `~/Library/Application Support/Claude Severance` | `~/.local/share/claude-severance` |
+
+Not yet: signed and notarised macOS builds, installers (`.dmg`, AppImage, `.deb`), Homebrew, and the fish shell. Windows users can try the preview too, but 1.1 above is the stable version.
 
 ## Everyday use
 
@@ -125,7 +152,7 @@ powershell -STA -File tools\make-graphics.ps1      # rebuild the logo, app icon 
 Invoke-Pester -Path tests                          # unit tests (Pester 5)
 ```
 
-**2.0 (Rust, in progress)** lives in `crates/`. It builds with the toolchain pinned in `rust-toolchain.toml`:
+**2.0 (Rust, preview)** lives in `crates/` and `app/`. It builds with the toolchain pinned in `rust-toolchain.toml`:
 
 ```bash
 cargo test --workspace                                  # unit tests and a sandboxed 1.x-to-2.0 update
@@ -136,7 +163,7 @@ cargo run -p severance-app -- --preview                          # the manager w
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), the setup window's design notes in [docs/DESIGN.md](docs/DESIGN.md), and [RELEASING.md](RELEASING.md).
 
-**Version 2.0 is a rewrite in Rust** for Windows, macOS and Linux from one codebase, with the same accounts file, so a 1.x install updates in place. It ships as previews first; 1.x stays supported until 2.0 is stable. iOS isn't possible (an iOS app can't start other apps with their own data). See [docs/PLATFORMS-PLAN.md](docs/PLATFORMS-PLAN.md).
+**Version 2.0 is a rewrite in Rust** for Windows, macOS and Linux from one codebase, with the same accounts file, so a 1.x install updates in place. It ships as previews first; 1.x stays supported until 2.0 is stable. On Linux and macOS, `tools/e2e-unix.sh` installs it for real in a throwaway home folder and checks every launcher, shell profile and command. iOS isn't possible (an iOS app can't start other apps with their own data). See [docs/PLATFORMS-PLAN.md](docs/PLATFORMS-PLAN.md).
 
 ## License
 
