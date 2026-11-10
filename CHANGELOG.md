@@ -10,6 +10,9 @@ All notable changes to Claude Severance. The format follows [Keep a Changelog](h
 ### Changed
 - **New accounts' commands are their name followed by `claude`** (`acmeclaude`, `unityflowclaude`), and your normal Claude's is `myclaude`, instead of `claude-<name>`. Accounts that already exist keep their commands. When something on the computer already has the suggested name, a first install uses `claude-<name>` and says so.
 
+### Fixed
+- 2.0 manager window: maximised or on a big screen, the accounts stay in a centred column instead of stretching across the screen. In a narrow window, launcher choices move under their description instead of cutting it short, and the wrong-email warning wraps instead of being cut off.
+
 ## [2.0.0-preview.1] - 2026-11-10
 
 The first preview of 2.0, the Rust rewrite: Claude Severance on macOS and Linux, a manager window, and launchers per account. Tested on fresh GitHub Windows, macOS and Linux machines, but not yet on a real Mac or Linux desktop. 1.1.0 stays the stable Windows release.
