@@ -112,6 +112,27 @@ fn the_whole_command_line_in_a_sandbox() {
     let line = String::from_utf8(child.wait_with_output().unwrap().stdout).unwrap();
     assert!(line.contains(" A ") && line.contains("Opus"), "{line}");
 
+    // launchers: show, change, refuse nonsense
+    assert!(ok(sb, &["launchers", "acme"]).contains("terminal  Start menu"));
+    ok(
+        sb,
+        &[
+            "launchers",
+            "acme",
+            "--app",
+            "both",
+            "--terminal",
+            "desktop",
+        ],
+    );
+    let desk = sb.join("Desktop");
+    assert!(
+        desk.join("Claude - Acme Corp.lnk").exists()
+            && desk.join("Claude Code - Acme Corp.lnk").exists()
+    );
+    assert!(fails(sb, &["launchers", "acme", "--app", "sideways"]).contains("isn't a place"));
+    assert!(ok(sb, &["terminal", "acme"]).contains("Would open a terminal for Acme Corp"));
+
     let out = ok(sb, &["remove", "acme", "--yes"]);
     assert!(
         out.contains("Backed up and removed Acme Corp") || out.contains("done"),

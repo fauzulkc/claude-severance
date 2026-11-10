@@ -88,3 +88,7 @@ pub fn install_claude_code() -> Result<()> {
 pub fn has_winget() -> bool {
     false
 }
+
+pub fn open_terminal(_account: &Account, _paths: &Paths) -> Result<()> {
+    bail!("Opening a terminal for an account {LATER}.")
+}

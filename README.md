@@ -131,6 +131,7 @@ Invoke-Pester -Path tests                          # unit tests (Pester 5)
 cargo test --workspace                                  # unit tests and a sandboxed 1.x-to-2.0 update
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p severance-cli -- --sandbox target/sandbox install   # try any command without touching this PC
+cargo run -p severance-app -- --preview                          # the manager window, on sample accounts
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), the setup window's design notes in [docs/DESIGN.md](docs/DESIGN.md), and [RELEASING.md](RELEASING.md).

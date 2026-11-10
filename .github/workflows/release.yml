@@ -160,6 +160,12 @@ jobs:
           read -r -a triples <<< "$TARGETS"
           for t in "${triples[@]}"; do rustup target add "$t"; done
 
+      - name: Linux libraries for the window (WebKitGTK)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.asset }}
@@ -168,13 +174,13 @@ jobs:
         if: matrix.test
         run: cargo test --workspace --locked
 
-      - name: Build the command-line tool
+      - name: Build the command line and the manager window
         run: |
           read -r -a triples <<< "$TARGETS"
-          for t in "${triples[@]}"; do cargo build --release --locked --package severance-cli --target "$t"; done
+          for t in "${triples[@]}"; do cargo build --release --locked --package severance-cli --package severance-app --target "$t"; done
 
-      # The setup window (app/) gets its own bundling step once it exists: per-user installer on
-      # Windows, .app on macOS, AppImage and .deb on Linux. See docs/PLATFORMS-PLAN.md, phases 3 and 5.
+      # The manager window ships as a plain program next to severance for now; installers (per-user on
+      # Windows, .app on macOS, AppImage and .deb on Linux) are phase 5 of docs/PLATFORMS-PLAN.md.
 
       - name: Package
         run: |
@@ -184,7 +190,7 @@ jobs:
           mkdir -p "$stage" dist
           read -r -a triples <<< "$TARGETS"
           set -- "${triples[@]}"
-          for bin in severance severancew; do
+          for bin in severance severancew ClaudeSeverance; do
             case "$ASSET" in
               windows-*) cp "target/$1/release/$bin.exe" "$stage/" ;;
               macos-*)   lipo -create -output "$stage/$bin" "target/$1/release/$bin" "target/$2/release/$bin" ;;

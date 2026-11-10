@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Severance</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body data-moment="waiting">
+<div class="floor" aria-hidden="true"><div class="seam"><div class="light"></div></div></div>
+
+<header class="bar" data-tauri-drag-region>
+  <svg class="mark small" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14"/><path class="solid" d="M 29,12 A 18,18 0 0 0 29,48 Z"/><path class="open" d="M 35,17.5 A 16.5,16.5 0 0 1 35,50.5 Z"/></svg>
+  <span class="bar-title" data-tauri-drag-region>Claude Severance</span>
+  <span class="bar-tag" id="sandbox-tag" hidden>Preview</span>
+  <span class="grow" data-tauri-drag-region></span>
+  <button class="win" id="win-min" aria-label="Minimise"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></button>
+  <button class="win close" id="win-close" aria-label="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
+</header>
+
+<main>
+  <section class="copy">
+    <p class="eyebrow" id="eyebrow">Assignments</p>
+    <h1 id="title"><span>Each account</span><span class="second">on its own floor.</span></h1>
+    <p class="lede" id="lede">Add, rename or remove accounts, and choose where each one's launchers go: one opens Claude Desktop, the other a terminal with its Claude Code.</p>
+  </section>
+
+  <section class="card" id="accounts" aria-label="Accounts"></section>
+  <button class="add-row" id="add"><span class="plus">+</span> Add an account</button>
+
+  <section class="steps" id="steps" hidden aria-live="polite"></section>
+  <p class="notes" id="notes" hidden></p>
+</main>
+
+<footer>
+  <p class="meta" id="meta"></p>
+  <div class="actions">
+    <button class="ghost" id="close">Close</button>
+    <button class="primary" id="save" disabled>Save changes</button>
+  </div>
+  <div class="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+</footer>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<template id="row">
+  <article class="account">
+    <button class="summary" aria-expanded="false">
+      <span class="tile"></span>
+      <span class="who"><span class="name"></span><span class="email"></span></span>
+      <span class="cmd"></span>
+      <span class="badge"></span>
+      <svg class="chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M3 2l3.5 3L3 8"/></svg>
+    </button>
+    <div class="detail" hidden>
+      <div class="grid">
+        <label>Name<input class="f-name" maxlength="40" spellcheck="false"></label>
+        <label>Email it signs in with<input class="f-email" type="email" spellcheck="false" placeholder="you@org.example"></label>
+        <label class="wide">Command in the terminal<input class="f-alias mono" spellcheck="false" autocapitalize="off"><span class="hint f-alias-hint"></span></label>
+      </div>
+
+      <div class="group">
+        <h3>Launchers</h3>
+        <div class="launcher" data-kind="app">
+          <div class="l-text"><span class="l-name">Desktop app</span><span class="l-desc">Claude Desktop as this account</span></div>
+          <div class="chips"><button class="chip" data-place="desktop">Desktop</button><button class="chip" data-place="startMenu">Start menu</button></div>
+          <button class="link open-now" data-open="app">Open</button>
+        </div>
+        <div class="launcher" data-kind="terminal">
+          <div class="l-text"><span class="l-name">Terminal</span><span class="l-desc t-desc"></span></div>
+          <div class="chips"><button class="chip" data-place="desktop">Desktop</button><button class="chip" data-place="startMenu">Start menu</button></div>
+          <button class="link open-now" data-open="terminal">Open</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Folders <span class="h-note">Claude Code in these uses this account</span></h3>
+        <ul class="folders"></ul>
+        <button class="link add-folder">Add a folder</button>
+      </div>
+
+      <div class="group">
+        <h3>Tile</h3>
+        <div class="swatches"></div>
+        <div class="logo-row"><button class="link pick-logo">Use a logo</button><button class="link clear-logo" hidden>Back to the letter</button></div>
+      </div>
+
+      <div class="foot">
+        <button class="link danger remove">Remove this account</button>
+        <span class="main-note" hidden>Your main account stays. To go back to one Claude, uninstall instead.</span>
+      </div>
+    </div>
+  </article>
+</template>
+
+<script src="bridge.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

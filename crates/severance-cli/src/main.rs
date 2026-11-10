@@ -21,7 +21,7 @@ fn plain(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
-        if c == '' && chars.peek() == Some(&'[') {
+        if c == '\x1b' && chars.peek() == Some(&'[') {
             chars.next();
             for d in chars.by_ref() {
                 if d.is_ascii_alphabetic() {
@@ -100,6 +100,19 @@ enum Command {
     },
     /// Rename an account's terminal command
     Alias { account: String, command: String },
+    /// Open a terminal running an account's Claude Code
+    Terminal { account: String },
+    /// Show or change where an account's launchers go: none, desktop, start-menu or both
+    Launchers {
+        /// The account's id, name or command
+        account: String,
+        /// The Claude Desktop launcher
+        #[arg(long, value_name = "WHERE")]
+        app: Option<String>,
+        /// The terminal (Claude Code) launcher
+        #[arg(long, value_name = "WHERE")]
+        terminal: Option<String>,
+    },
     /// Open Claude Desktop for an account
     Open { account: String },
     /// Install Claude Severance, or update it, with the current accounts
@@ -208,6 +221,12 @@ fn dispatch(cli: Cli) -> Result<()> {
         Command::Remove { account, yes } => remove(&ctx, &account, yes),
         Command::Alias { account, command } => rename_alias(&ctx, &account, &command),
         Command::Open { account } => open(&ctx, &account),
+        Command::Terminal { account } => terminal(&ctx, &account),
+        Command::Launchers {
+            account,
+            app,
+            terminal,
+        } => launchers(&ctx, &account, app, terminal),
         Command::Install {
             no_desktop_shortcuts,
             no_auto_switch,
@@ -248,11 +267,19 @@ fn dispatch(cli: Cli) -> Result<()> {
             Ok(())
         }
         Command::Setup => {
-            say!("The setup window comes in a later 2.0 preview. Until then:");
+            let manager = ctx.paths.bin().join(platform::exe_name(install::MANAGER));
+            if !ctx.sandbox && manager.is_file() {
+                std::process::Command::new(&manager)
+                    .spawn()
+                    .context("couldn't open the manager window")?;
+                return Ok(());
+            }
+            say!("Manage accounts from here:");
             say!(
                 "  severance add <name> [--email <address>] [--alias <command>] [--folder <path>] [--logo <image>]"
             );
             say!("  severance alias <account> <command>");
+            say!("  severance launchers <account> [--app <where>] [--terminal <where>]");
             say!("  severance remove <account>");
             say!("  severance repair");
             Ok(())
@@ -430,6 +457,60 @@ fn rename_alias(ctx: &Ctx, key: &str, command: &str) -> Result<()> {
         Vec::new(),
         Choices::current(ctx),
     )
+}
+
+fn terminal(ctx: &Ctx, key: &str) -> Result<()> {
+    let cfg = Config::load(&ctx.paths)?;
+    let a = cfg.find(key)?;
+    if ctx.sandbox {
+        say!(
+            "Would open a terminal for {} in {}",
+            a.name,
+            a.start_dir(&ctx.paths).display()
+        );
+        return Ok(());
+    }
+    platform::open_terminal(a, &ctx.paths)
+}
+
+fn launchers(ctx: &Ctx, key: &str, app: Option<String>, terminal: Option<String>) -> Result<()> {
+    use severance_core::account::Places;
+    let mut cfg = Config::load(&ctx.paths)?;
+    let id = cfg.find(key)?.id.clone();
+    let current = Choices::current(ctx);
+    let account = cfg
+        .accounts
+        .iter_mut()
+        .find(|a| a.id == id)
+        .expect("found above");
+    let mut l = account.launchers_or_default(current.desktop_shortcuts);
+    let parse = |w: &str| {
+        Places::parse(w)
+            .with_context(|| format!("{w} isn't a place: use none, desktop, start-menu or both."))
+    };
+    if app.is_none() && terminal.is_none() {
+        say!("{}:", account.name);
+        say!("  app       {}", l.app.describe());
+        say!("  terminal  {}", l.terminal.describe());
+        say!(
+            "\x1b[2mChange with: severance launchers {id} --app <where> --terminal <where>  (none, desktop, start-menu, both)\x1b[0m"
+        );
+        return Ok(());
+    }
+    if let Some(w) = app {
+        l.app = parse(&w)?;
+    }
+    if let Some(w) = terminal {
+        l.terminal = parse(&w)?;
+    }
+    account.launchers = Some(l);
+    say!(
+        "\x1b[36m{}: app in {}, terminal in {}\x1b[0m",
+        account.name,
+        l.app.describe(),
+        l.terminal.describe()
+    );
+    save(ctx, cfg.accounts, Vec::new(), Vec::new(), current)
 }
 
 fn open(ctx: &Ctx, key: &str) -> Result<()> {

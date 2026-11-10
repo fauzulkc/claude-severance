@@ -499,3 +499,35 @@ pub fn install_claude_code() -> Result<()> {
         .status()?;
     Ok(())
 }
+
+/// Opens a terminal running this account's Claude Code: Windows Terminal when it's installed, else a console
+pub fn open_terminal(account: &Account, paths: &Paths) -> Result<()> {
+    let exe = paths.bin().join("severance.exe");
+    if !exe.is_file() {
+        bail!("Claude Severance isn't installed yet, so its commands aren't there to open.");
+    }
+    let dir = account.start_dir(paths);
+    let title = account.terminal_shortcut_name();
+    let wt = std::env::var_os("LOCALAPPDATA")
+        .map(|l| PathBuf::from(l).join(r"Microsoft\WindowsApps\wt.exe"))
+        .filter(|p| p.exists());
+    let mut cmd = match wt {
+        Some(wt) => {
+            let mut c = std::process::Command::new(wt);
+            c.args(["-w", "new", "new-tab", "--title", &title, "-d"])
+                .arg(&dir)
+                .arg(&exe)
+                .args(["run", &account.id]);
+            c
+        }
+        None => {
+            let mut c = std::process::Command::new(&exe);
+            c.args(["run", &account.id])
+                .current_dir(&dir)
+                .creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE
+            c
+        }
+    };
+    cmd.spawn().context("couldn't open a terminal")?;
+    Ok(())
+}

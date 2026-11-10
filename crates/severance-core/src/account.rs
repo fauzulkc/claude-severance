@@ -33,8 +33,82 @@ pub struct Account {
     /// Folders whose Claude Code sessions belong to this account
     #[serde(default, deserialize_with = "strings_lenient")]
     pub paths: Vec<String>,
+    /// Where its launchers go; `None` in files from 1.x, which then get the defaults
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launchers: Option<Launchers>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+/// An account's two launchers: one opens Claude Desktop for it, the other a terminal running its Claude Code
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Launchers {
+    #[serde(default)]
+    pub app: Places,
+    #[serde(default)]
+    pub terminal: Places,
+}
+
+/// Where a launcher goes
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Places {
+    #[serde(default)]
+    pub desktop: bool,
+    #[serde(default)]
+    pub start_menu: bool,
+}
+
+impl Places {
+    pub const NONE: Self = Self {
+        desktop: false,
+        start_menu: false,
+    };
+    pub const START_MENU: Self = Self {
+        desktop: false,
+        start_menu: true,
+    };
+    pub const BOTH: Self = Self {
+        desktop: true,
+        start_menu: true,
+    };
+
+    /// "none", "desktop", "start-menu" or "both"
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_lowercase().replace(['_', ' '], "-").as_str() {
+            "none" | "off" | "no" => Some(Self::NONE),
+            "desktop" => Some(Self {
+                desktop: true,
+                start_menu: false,
+            }),
+            "start-menu" | "start" | "startmenu" => Some(Self::START_MENU),
+            "both" | "on" | "yes" => Some(Self::BOTH),
+            _ => None,
+        }
+    }
+
+    pub fn describe(self) -> &'static str {
+        match (self.desktop, self.start_menu) {
+            (true, true) => "desktop and Start menu",
+            (true, false) => "desktop",
+            (false, true) => "Start menu",
+            (false, false) => "none",
+        }
+    }
+}
+
+impl Launchers {
+    /// For an account that has none yet: the app in the Start menu (and on the desktop when `desktop_shortcuts`),
+    /// the terminal in the Start menu
+    pub fn defaults(desktop_shortcuts: bool) -> Self {
+        Self {
+            app: Places {
+                desktop: desktop_shortcuts,
+                start_menu: true,
+            },
+            terminal: Places::START_MENU,
+        }
+    }
 }
 
 impl Account {
@@ -90,6 +164,27 @@ impl Account {
             .filter(|c| !r#"\/:*?"<>|"#.contains(*c))
             .collect();
         format!("Claude - {clean}")
+    }
+
+    /// Name of its terminal launcher
+    pub fn terminal_shortcut_name(&self) -> String {
+        self.shortcut_name()
+            .replacen("Claude - ", "Claude Code - ", 1)
+    }
+
+    /// The folder its terminal launcher starts in: its first folder that exists, else the home folder
+    pub fn start_dir(&self, paths: &Paths) -> PathBuf {
+        self.paths
+            .iter()
+            .map(|p| PathBuf::from(crate::paths::expand(p)))
+            .find(|p| p.is_dir())
+            .unwrap_or_else(|| paths.home.clone())
+    }
+
+    /// Its launchers, or the defaults when it has none yet
+    pub fn launchers_or_default(&self, desktop_shortcuts: bool) -> Launchers {
+        self.launchers
+            .unwrap_or_else(|| Launchers::defaults(desktop_shortcuts))
     }
 
     /// `CLAUDE_CONFIG_DIR` for this account, or `None` for the main account (variable unset, stock `~/.claude`)
@@ -245,6 +340,57 @@ mod tests {
             ..Account::default()
         };
         assert_eq!(a.shortcut_name(), "Claude - Acme R&D  Labs");
+    }
+
+    #[test]
+    fn launchers_read_write_and_default() {
+        let a: Account = serde_json::from_str(
+            r#"{"id":"acme","launchers":{"app":{"desktop":true},"terminal":{"startMenu":true}}}"#,
+        )
+        .unwrap();
+        let l = a.launchers.unwrap();
+        assert_eq!(
+            l.app,
+            Places {
+                desktop: true,
+                start_menu: false
+            }
+        );
+        assert_eq!(l.terminal, Places::START_MENU);
+        let back = serde_json::to_value(&a).unwrap();
+        assert_eq!(back["launchers"]["terminal"]["startMenu"], true);
+        let old: Account = serde_json::from_str(r#"{"id":"acme"}"#).unwrap();
+        assert!(
+            serde_json::to_value(&old)
+                .unwrap()
+                .get("launchers")
+                .is_none()
+        );
+        assert_eq!(old.launchers_or_default(false).app, Places::START_MENU);
+        assert_eq!(old.launchers_or_default(true).app, Places::BOTH);
+        assert_eq!(Places::parse("Start menu"), Some(Places::START_MENU));
+        assert_eq!(
+            Places::parse("both").unwrap().describe(),
+            "desktop and Start menu"
+        );
+        assert_eq!(Places::parse("sideways"), None);
+    }
+
+    #[test]
+    fn terminal_launcher_name_and_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let paths = Paths::new(t.path().join("root"), t.path().join("home"));
+        let mut a = Account {
+            name: "Acme".into(),
+            ..Account::default()
+        };
+        assert_eq!(a.terminal_shortcut_name(), "Claude Code - Acme");
+        assert_eq!(a.start_dir(&paths), paths.home);
+        a.paths = vec![
+            t.path().join("gone").display().to_string(),
+            t.path().display().to_string(),
+        ];
+        assert_eq!(a.start_dir(&paths), t.path());
     }
 
     #[test]

@@ -11,6 +11,17 @@ use std::path::{Path, PathBuf};
 /// Marks everything this tool puts outside its folder (shortcut targets, arguments)
 pub const MARKER: &str = "ClaudeSeverance";
 
+/// The manager window's program, installed next to `severance` when the build has it
+pub const MANAGER: &str = "ClaudeSeverance";
+
+struct Shortcut<'a> {
+    name: String,
+    target: &'a Path,
+    args: String,
+    workdir: PathBuf,
+    description: String,
+}
+
 /// Files 1.x kept in `bin` that 2.0 replaces
 const OLD_SCRIPTS: &[&str] = &[
     "Severance.psm1",
@@ -368,6 +379,7 @@ pub fn install(
         let mut a = a.clone();
         a.alias = a.alias();
         a.paths.retain(|p| !p.trim().is_empty());
+        a.launchers = Some(a.launchers_or_default(req.desktop_shortcuts));
         if let Some((_, src)) = req.logo_sources.iter().find(|(id, _)| *id == a.id) {
             match icon::import_logo(src, &a.id, paths) {
                 Ok(name) => a.logo = name,
@@ -443,6 +455,16 @@ pub fn install(
         }
         platform::unblock(&to);
     }
+    // the manager window is optional: a build without it installs the command line only
+    let manager = platform::exe_name(MANAGER);
+    let from = req.source_dir.join(&manager);
+    if from.is_file() {
+        let to = bin.join(&manager);
+        if crate::paths::comparable(&from) != crate::paths::comparable(&to) {
+            replace_file(&from, &to)?;
+        }
+        platform::unblock(&to);
+    }
     for f in OLD_SCRIPTS {
         let _ = std::fs::remove_file(bin.join(f));
     }
@@ -512,30 +534,36 @@ pub fn install(
             )),
         }
         let icon = icon::write_account_icon(a, paths).ok();
-        let args = format!("open {}", a.id);
-        let description = format!("Claude Desktop - {}", a.name);
-        let lnk = format!("{}.lnk", a.shortcut_name());
-        if req.desktop_shortcuts
-            && let Some(d) = &desktop
-        {
-            host.create_shortcut(
-                &d.join(&lnk),
-                &launcher,
-                &args,
-                &bin,
-                icon.as_deref(),
-                &description,
-            )?;
-        }
-        if let Some(sm) = &start_menu {
-            host.create_shortcut(
-                &sm.join(&lnk),
-                &launcher,
-                &args,
-                &bin,
-                icon.as_deref(),
-                &description,
-            )?;
+        let l = a.launchers_or_default(req.desktop_shortcuts);
+        // the app: Claude Desktop for this account, through severancew (no console window)
+        let app = Shortcut {
+            name: a.shortcut_name(),
+            target: &launcher,
+            args: format!("open {}", a.id),
+            workdir: bin.clone(),
+            description: format!("Claude Desktop - {}", a.name),
+        };
+        // the terminal: this account's Claude Code, in its first folder
+        let term = Shortcut {
+            name: a.terminal_shortcut_name(),
+            target: &exe,
+            args: format!("run {}", a.id),
+            workdir: a.start_dir(paths),
+            description: format!("Claude Code - {}", a.name),
+        };
+        for (sc, places) in [(&app, l.app), (&term, l.terminal)] {
+            for (on, dir) in [(places.desktop, &desktop), (places.start_menu, &start_menu)] {
+                if on && let Some(d) = dir {
+                    host.create_shortcut(
+                        &d.join(format!("{}.lnk", sc.name)),
+                        sc.target,
+                        &sc.args,
+                        &sc.workdir,
+                        icon.as_deref(),
+                        &sc.description,
+                    )?;
+                }
+            }
         }
         write_shim(&bin, &a.alias(), &a.id)?;
         step(&format!("Set up {}", a.name));
@@ -543,13 +571,19 @@ pub fn install(
 
     // ---- Start menu, commands, Settings > Apps ----
     if let Some(sm) = &start_menu {
+        let manager = bin.join(platform::exe_name(MANAGER));
+        let (target, args) = if manager.is_file() {
+            (&manager, "")
+        } else {
+            (&exe, "setup")
+        };
         host.create_shortcut(
             &sm.join("Claude Severance - Manage accounts.lnk"),
-            &exe,
-            "setup",
+            target,
+            args,
             &bin,
             Some(&app_icon),
-            "Add, rename or remove Claude accounts",
+            "Add, rename or remove Claude accounts, and their launchers",
         )?;
         host.create_shortcut(
             &sm.join("Uninstall Claude Severance.lnk"),
@@ -560,11 +594,7 @@ pub fn install(
             "Go back to a single Claude",
         )?;
     }
-    step(if req.desktop_shortcuts {
-        "Added Start menu entries and desktop shortcuts"
-    } else {
-        "Added Start menu entries"
-    });
+    step("Added the launchers");
 
     host.set_user_path_entry(&bin, true)?;
     host.set_user_env(

@@ -371,3 +371,76 @@ fn uninstall_with_data_zips_and_removes_everything() {
         "MAIN TOKEN"
     );
 }
+
+#[test]
+fn each_account_gets_the_launchers_it_asks_for() {
+    use severance_core::account::{Launchers, Places};
+    let t = tempfile::tempdir().unwrap();
+    let sb = Sandbox::new(t.path());
+    let paths = sb.paths();
+    let src = programs(t.path());
+    let work = t.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    let main = Account::new("Personal", "", &[], true, &[], 0);
+    let mut acme = Account::new(
+        "Acme",
+        "",
+        &[work.display().to_string()],
+        false,
+        &["personal"],
+        1,
+    );
+    acme.launchers = Some(Launchers {
+        app: Places::BOTH,
+        terminal: Places::BOTH,
+    });
+    // a 1.x account: no launchers yet, so it gets the defaults (and the desktop app shortcut, since asked for)
+    install::install(
+        &paths,
+        &sb,
+        &NoClash,
+        request(vec![main, acme.clone()], src.clone()),
+        &mut |_| {},
+    )
+    .unwrap();
+
+    let desktop = t.path().join("Desktop");
+    let start = t.path().join("Start Menu").join("Claude Severance");
+    let lnk = |dir: &Path, name: &str| dir.join(format!("{name}.lnk"));
+    let term = read(&lnk(&start, "Claude Code - Acme"));
+    assert!(
+        term.contains("run acme") && term.contains(&exe_name("severance")),
+        "{term}"
+    );
+    assert!(lnk(&desktop, "Claude Code - Acme").exists());
+    assert!(lnk(&desktop, "Claude - Acme").exists());
+    assert!(
+        lnk(&start, "Claude Code - Personal").exists(),
+        "terminal in the Start menu by default"
+    );
+    assert!(
+        !lnk(&desktop, "Claude Code - Personal").exists(),
+        "but not on the desktop"
+    );
+    assert!(lnk(&desktop, "Claude - Personal").exists());
+    let cfg = Config::load(&paths).unwrap();
+    assert_eq!(
+        cfg.get("personal").unwrap().launchers,
+        Some(Launchers::defaults(true)),
+        "defaults are saved"
+    );
+
+    // turn Acme's off: they go, the others stay
+    let mut accounts = cfg.accounts.clone();
+    accounts[1].launchers = Some(Launchers {
+        app: Places::START_MENU,
+        terminal: Places::NONE,
+    });
+    install::install(&paths, &sb, &NoClash, request(accounts, src), &mut |_| {}).unwrap();
+    assert!(
+        !lnk(&desktop, "Claude - Acme").exists() && !lnk(&desktop, "Claude Code - Acme").exists()
+    );
+    assert!(!lnk(&start, "Claude Code - Acme").exists());
+    assert!(lnk(&start, "Claude - Acme").exists());
+    assert!(lnk(&desktop, "Claude - Personal").exists());
+}
