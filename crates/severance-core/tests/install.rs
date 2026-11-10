@@ -166,6 +166,8 @@ fn updates_a_1x_install_then_adds_removes_and_uninstalls() {
         assert!(!bin.join(gone).exists(), "{gone} should be gone");
     }
     assert!(bin.join("assets").join("severance.ico").exists());
+    let app_icon = format!("severance.{}", severance_core::icon::icon_ext());
+    assert!(bin.join("assets").join(app_icon).exists());
     // a command per account; the 1.x shim replaced
     for (alias, id) in [
         ("claude-personal", "personal"),
@@ -215,7 +217,10 @@ fn updates_a_1x_install_then_adds_removes_and_uninstalls() {
         vec!["D:\\work\\acme".to_string()]
     );
     for id in ["personal", "acme", "globex"] {
-        assert!(bin.join(format!("icon-{id}.ico")).exists());
+        assert!(
+            bin.join(format!("icon-{id}.{}", severance_core::icon::icon_ext()))
+                .exists()
+        );
     }
     // shortcuts: the 1.x one replaced, someone else's kept, one per account on the desktop and in the Start menu
     let desktop = t.path().join("Desktop");
