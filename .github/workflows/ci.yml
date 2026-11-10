@@ -86,46 +86,64 @@ jobs:
             dist/*.sha256
           if-no-files-found: ignore
 
-  unix:
-    name: ${{ matrix.name }} port
+  rust:
+    name: Rust (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
         include:
+          - { os: windows-latest, name: Windows }
           - { os: ubuntu-latest, name: Linux }
           - { os: macos-latest, name: macOS }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
 
-      - name: Look for the port
-        id: port
+      - name: Look for the Rust workspace
+        id: rust
         run: |
-          if [ -f unix/go.mod ]; then
+          if [ -f Cargo.toml ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No ${{ matrix.name }} port yet (unix/go.mod). See docs/PLATFORMS-PLAN.md."
+            echo "::notice::No Rust workspace yet (Cargo.toml). See docs/PLATFORMS-PLAN.md."
           fi
 
-      - uses: actions/setup-go@v7
-        if: steps.port.outputs.present == 'true'
-        with:
-          go-version-file: unix/go.mod
-          cache-dependency-path: unix/go.sum
+      - name: Toolchain
+        if: steps.rust.outputs.present == 'true'
+        # rust-toolchain.toml pins the version and components; this installs them
+        run: rustup toolchain install
 
-      - name: Vet and test
-        if: steps.port.outputs.present == 'true'
-        working-directory: unix
+      - name: Linux libraries for the window (WebKitGTK)
+        if: steps.rust.outputs.present == 'true' && runner.os == 'Linux' && hashFiles('app/src-tauri/Cargo.toml') != ''
         run: |
-          go vet ./...
-          go test -race -count=1 ./...
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.rust.outputs.present == 'true'
+
+      - name: Format
+        if: steps.rust.outputs.present == 'true'
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        if: steps.rust.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Tests
+        if: steps.rust.outputs.present == 'true'
+        run: cargo test --workspace --locked
 
       - name: Check launchers
-        if: steps.port.outputs.present == 'true' && runner.os == 'Linux'
+        if: steps.rust.outputs.present == 'true' && runner.os == 'Linux' && hashFiles('crates/severance-core/testdata/launchers/*.desktop') != ''
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq desktop-file-utils
-          if [ -d unix/testdata/launchers ]; then desktop-file-validate unix/testdata/launchers/*.desktop; fi
+          sudo apt-get install -y -qq desktop-file-utils
+          desktop-file-validate crates/severance-core/testdata/launchers/*.desktop
 
   lint:
     name: Workflows and hygiene

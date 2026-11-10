@@ -127,7 +127,7 @@ Invoke-Pester -Path tests                          # unit tests (Pester 5)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md), the setup window's design notes in [docs/DESIGN.md](docs/DESIGN.md), and [RELEASING.md](RELEASING.md).
 
-**Linux and macOS** are planned as one Go program, released as a preview first; iOS isn't possible (an iOS app can't start other apps with their own data). See [docs/PLATFORMS-PLAN.md](docs/PLATFORMS-PLAN.md).
+**Version 2.0 is a rewrite in Rust** for Windows, macOS and Linux from one codebase, with the same accounts file, so a 1.x install updates in place. It ships as previews first; 1.x stays supported until 2.0 is stable. iOS isn't possible (an iOS app can't start other apps with their own data). See [docs/PLATFORMS-PLAN.md](docs/PLATFORMS-PLAN.md).
 
 ## License
 

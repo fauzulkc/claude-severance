@@ -4,6 +4,10 @@ All notable changes to Claude Severance. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Changed
+- **Plan: version 2.0 is a rewrite in Rust** for Windows, macOS and Linux, replacing the planned separate Go port. One Cargo workspace (a core library, the `severance` command and a Tauri setup window) reads the same `accounts.json`, so a 1.x install updates in place. See `docs/PLATFORMS-PLAN.md`.
+- CI checks the Rust workspace (format, Clippy, tests) on Windows, Linux and macOS once it exists. Release tags `v2.*` build Rust archives for Windows x64 and Arm64, Linux x86_64 and aarch64, and macOS universal; `v1.*` tags still build the PowerShell zip.
+
 ## [1.1.0] - 2026-11-10
 
 The first public release: a setup window of its own, any number of org accounts with their own icon and command, and tests and release automation.

@@ -1,5 +1,8 @@
 name: Release
 
+# v1.* tags build the PowerShell version (src/). v2.* and later build the Rust workspace
+# (Cargo.toml, crates/, app/) for Windows, Linux and macOS. See docs/PLATFORMS-PLAN.md.
+
 on:
   push:
     tags: ['v*']
@@ -26,33 +29,53 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
+      kind: ${{ steps.v.outputs.kind }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
-      - name: Tag, module version and CHANGELOG agree
+      - name: Tag, version and CHANGELOG agree
         id: v
         run: |
           version="${TAG#v}"
           base="${version%%-*}"
-          # .psm1 files are checked out with CRLF everywhere (.gitattributes), so drop the CR
-          module="$(sed -n "s/^\$script:Version = '\([^']*\)'.*/\1/p" src/Severance.psm1 | tr -d '\r')"
-          if [ "$base" != "$module" ]; then
-            echo "::error::Tag $TAG is $base but src/Severance.psm1 says $module."
-            exit 1
+          major="${base%%.*}"
+          if [ "$major" -ge 2 ]; then
+            kind=rust
+            # the version in [workspace.package] of the root Cargo.toml
+            source="Cargo.toml"
+            found="$(sed -n '/^\[workspace\.package\]/,/^\[/ s/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml 2>/dev/null | head -n 1 | tr -d '\r')"
+            want="$version"
+          else
+            kind=powershell
+            # .psm1 files are checked out with CRLF everywhere (.gitattributes), so drop the CR
+            source="src/Severance.psm1"
+            found="$(sed -n "s/^\$script:Version = '\([^']*\)'.*/\1/p" src/Severance.psm1 | tr -d '\r')"
+            want="$base"
           fi
-          awk -v v="## [$base]" 'index($0, v) == 1 { on = 1; next } /^## \[/ { on = 0 } on' CHANGELOG.md > notes.md
-          if ! grep -q '[^[:space:]]' notes.md; then
-            echo "::error::CHANGELOG.md has no '## [$base]' section."
+          if [ "$want" != "$found" ]; then
+            echo "::error::Tag $TAG wants version $want but $source says '${found:-nothing}'."
             exit 1
           fi
           prerelease=false
           case "$version" in *-*) prerelease=true ;; esac
+          # notes: the section for this exact version, else its base version, else Unreleased for a preview
+          for section in "$version" "$base" Unreleased; do
+            if [ "$section" = Unreleased ] && [ "$prerelease" != true ]; then break; fi
+            awk -v v="## [$section]" 'index($0, v) == 1 { on = 1; next } /^## \[/ { on = 0 } on' CHANGELOG.md > notes.md
+            if grep -q '[^[:space:]]' notes.md; then break; fi
+          done
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no '## [$base]' section with notes."
+            exit 1
+          fi
           {
             echo "version=$version"
             echo "prerelease=$prerelease"
+            echo "kind=$kind"
           } >> "$GITHUB_OUTPUT"
+          echo "Building $kind $version"
           cat notes.md
 
       - uses: actions/upload-artifact@v7
@@ -61,8 +84,9 @@ jobs:
           path: notes.md
 
   windows:
-    name: Windows build
+    name: Windows build (PowerShell)
     needs: prepare
+    if: needs.prepare.outputs.kind == 'powershell'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -103,55 +127,86 @@ jobs:
             dist/*.sha256
           if-no-files-found: error
 
-  unix:
-    name: ${{ matrix.name }} build
+  rust:
+    name: ${{ matrix.name }} build (Rust)
     needs: prepare
+    if: needs.prepare.outputs.kind == 'rust'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest, name: Linux, target: linux }
-          - { os: macos-latest, name: macOS, target: macos }
+          - { name: Windows x64, os: windows-latest, targets: x86_64-pc-windows-msvc, asset: windows-x64, test: true }
+          - { name: Windows Arm64, os: windows-latest, targets: aarch64-pc-windows-msvc, asset: windows-arm64, test: false }
+          - { name: Linux x64, os: ubuntu-latest, targets: x86_64-unknown-linux-gnu, asset: linux-x86_64, test: true }
+          - { name: Linux Arm64, os: ubuntu-24.04-arm, targets: aarch64-unknown-linux-gnu, asset: linux-aarch64, test: true }
+          - { name: macOS, os: macos-latest, targets: 'aarch64-apple-darwin x86_64-apple-darwin', asset: macos-universal, test: true }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TARGETS: ${{ matrix.targets }}
+      ASSET: ${{ matrix.asset }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
-      - name: Look for the port
-        id: port
+      - name: Toolchain and targets
         run: |
-          if [ -f unix/go.mod ] && [ -f unix/build.sh ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No ${{ matrix.name }} port in this release yet. See docs/PLATFORMS-PLAN.md."
-          fi
+          rustup toolchain install
+          for t in $TARGETS; do rustup target add "$t"; done
 
-      - uses: actions/setup-go@v7
-        if: steps.port.outputs.present == 'true'
+      - uses: Swatinem/rust-cache@v2
         with:
-          go-version-file: unix/go.mod
-          cache-dependency-path: unix/go.sum
+          key: ${{ matrix.asset }}
 
-      # unix/build.sh <linux|macos> <version> <out dir> writes the archives, for example
-      # ClaudeSeverance-<v>-linux-x86_64.tar.gz, ...-linux-aarch64.tar.gz and ...-macos-universal.zip, each with a .sha256
-      - name: Test and build
-        if: steps.port.outputs.present == 'true'
+      - name: Tests
+        if: matrix.test
+        run: cargo test --workspace --locked
+
+      - name: Build the command-line tool
         run: |
-          (cd unix && go test -count=1 ./...)
-          bash unix/build.sh "${{ matrix.target }}" "${{ needs.prepare.outputs.version }}" dist
+          for t in $TARGETS; do cargo build --release --locked --package severance-cli --target "$t"; done
+
+      # The setup window (app/) gets its own bundling step once it exists: per-user installer on
+      # Windows, .app on macOS, AppImage and .deb on Linux. See docs/PLATFORMS-PLAN.md, phases 3 and 5.
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          name="ClaudeSeverance-$VERSION-$ASSET"
+          stage="stage/$name"
+          mkdir -p "$stage" dist
+          set -- $TARGETS
+          case "$ASSET" in
+            windows-*) cp "target/$1/release/severance.exe" "$stage/" ;;
+            macos-*)   lipo -create -output "$stage/severance" "target/$1/release/severance" "target/$2/release/severance" ;;
+            *)         cp "target/$1/release/severance" "$stage/" ;;
+          esac
+          cp LICENSE README.md CHANGELOG.md "$stage/"
+          cd stage
+          case "$ASSET" in
+            windows-*) file="$name.zip"; 7z a -tzip -bso0 "../dist/$file" "$name" ;;
+            *)         file="$name.tar.gz"; tar -czf "../dist/$file" "$name" ;;
+          esac
+          cd ../dist
+          if command -v sha256sum >/dev/null; then sha256sum "$file" > "$file.sha256"; else shasum -a 256 "$file" > "$file.sha256"; fi
+          ls -l
 
       - uses: actions/upload-artifact@v7
-        if: steps.port.outputs.present == 'true'
         with:
-          name: release-${{ matrix.target }}
+          name: release-${{ matrix.asset }}
           path: dist/*
           if-no-files-found: error
 
   publish:
     name: Publish
-    needs: [prepare, windows, unix]
+    needs: [prepare, windows, rust]
+    # one of the build jobs is always skipped (by kind), so don't let the skip skip this job too
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

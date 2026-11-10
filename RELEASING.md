@@ -2,7 +2,8 @@
 
 ## Versions and tags
 
-- Semantic versioning. The single source of truth is `$script:Version` in `src/Severance.psm1`. The release workflow refuses a tag that doesn't match it.
+- Semantic versioning. The single source of truth is `$script:Version` in `src/Severance.psm1` for 1.x, and `version` under `[workspace.package]` in the root `Cargo.toml` for 2.x (the Rust rewrite, see [docs/PLATFORMS-PLAN.md](docs/PLATFORMS-PLAN.md)). The release workflow refuses a tag that doesn't match it.
+- `v1.*` tags build the PowerShell zip; `v2.*` and later build the Rust binaries for Windows (x64, Arm64), Linux (x86_64, aarch64) and macOS (universal).
 - Stable releases are tagged `vX.Y.Z`; previews are `vX.Y.Z-preview.N`. Tags are annotated (`git tag -a`).
 - `CHANGELOG.md` has a `## [Unreleased]` section. At release time it is renamed to `## [X.Y.Z] - YYYY-MM-DD`, and that section becomes the release notes.
 - Previews are published as GitHub pre-releases, so `releases/latest` always points at a stable build.
@@ -10,7 +11,7 @@
 ## Cutting a release
 
 1. Make sure `main` is green in CI.
-2. Set the version in `src/Severance.psm1`, and move `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - <date>`, with a fresh empty `## [Unreleased]` above it. Update the compare links at the bottom.
+2. Set the version (`src/Severance.psm1` for 1.x, the root `Cargo.toml` for 2.x, then `cargo update --workspace` so `Cargo.lock` agrees), and move `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - <date>`, with a fresh empty `## [Unreleased]` above it. Update the compare links at the bottom.
 3. Commit: `release: vX.Y.Z`.
 4. Tag and push:
 
@@ -21,9 +22,8 @@
 
 5. The **Release** workflow then:
    - checks the tag against the module version, and that the CHANGELOG has the section;
-   - runs the tests and renders every setup screen;
-   - builds `ClaudeSeverance-X.Y.Z.zip` and its `.sha256`, plus a versionless `ClaudeSeverance.zip` so `releases/latest/download/ClaudeSeverance.zip` always gives the newest;
-   - builds the Linux and macOS archives once `unix/` exists (see [docs/PLATFORMS-PLAN.md](docs/PLATFORMS-PLAN.md)), and skips them with a notice until then;
+   - for 1.x: runs the Pester tests, renders every setup screen, and builds `ClaudeSeverance-X.Y.Z.zip` and its `.sha256`, plus a versionless `ClaudeSeverance.zip` so `releases/latest/download/ClaudeSeverance.zip` always gives the newest;
+   - for 2.x: runs `cargo test` on each platform and builds `ClaudeSeverance-X.Y.Z-<platform>` archives (`.zip` on Windows, `.tar.gz` elsewhere), each with a `.sha256`. A preview's notes come from `## [X.Y.Z-preview.N]`, else `## [X.Y.Z]`, else `## [Unreleased]`;
    - attaches a build provenance attestation (`gh attestation verify <file> --repo fauzulkc/claude-severance`);
    - creates the GitHub release with the CHANGELOG section as notes, or adds the files to it if it already exists.
 6. Check the release page: the assets, the notes, and that `latest` moved (stable only).
@@ -69,7 +69,7 @@ A failed run can be re-run from the Actions tab; uploads replace what's already 
 | GitHub Releases | every tag | none (the workflow's own token) |
 | Build attestations | every tag | none (OIDC) |
 | winget | stable tags, once listed | `WINGET_TOKEN` |
-| Homebrew tap | once `unix/` ships | `HOMEBREW_TAP_TOKEN` |
+| Homebrew tap | once 2.x ships for macOS and Linux | `HOMEBREW_TAP_TOKEN` |
 | macOS notarization | once there's an Apple Developer account | `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`, `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD` |
 
 A channel whose secret isn't set prints a notice and skips, so a release never fails because of a channel that isn't set up yet.

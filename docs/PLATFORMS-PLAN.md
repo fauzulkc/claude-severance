@@ -1,10 +1,19 @@
-# Platforms plan: Linux and macOS
+# Platforms plan: one Rust codebase
 
-Claude Severance is Windows-only today. This plan brings it to Linux and macOS. **There is no iOS version, by design**; why is below.
+Claude Severance 1.x is a Windows-only PowerShell tool. **Version 2.0 is a rewrite in Rust** that runs on Windows, macOS and Linux from one codebase, with a command-line tool and a setup window on all three. **There is no iOS version, by design**; why is below.
+
+Decided 2026-11-10. This replaces the earlier plan for a separate Go port alongside the PowerShell version.
+
+## Why one Rust codebase
+
+- **One implementation.** Accounts, the alias conflict check, command shims, icons, launchers and the Claude Code settings are written and tested once, not in PowerShell and again in a second language.
+- **Fewer runtime surprises.** Much of 1.x's bug-fixing was Windows PowerShell 5.1 itself: case-insensitive variables shadowing each other, JSON keys that differ only by case, PSObject wrapping, overload picking. The compiler and `serde` rule those out.
+- **Nothing to install for users.** A native binary per platform, no runtime, no administrator rights, as today.
+- **The setup window travels.** WPF exists only on Windows. The 2.0 window is a [Tauri](https://tauri.app) app drawn by the system webview (WebView2, built into Windows 11; WKWebView on macOS; WebKitGTK on Linux), so the Severance look carries over as HTML and CSS with the same IBM Plex fonts.
 
 ## What each platform allows
 
-| | Windows (today) | macOS | Linux | iOS |
+| | Windows | macOS | Linux | iOS |
 |---|---|---|---|---|
 | Claude Code CLI | Yes | Yes | Yes | No CLI on iOS |
 | Separate Claude Code config | `CLAUDE_CONFIG_DIR` | `CLAUDE_CONFIG_DIR` | `CLAUDE_CONFIG_DIR` | n/a |
@@ -17,55 +26,85 @@ Claude Severance is Windows-only today. This plan brings it to Linux and macOS. 
 
 An iOS app runs in its own sandbox and can't start the Claude app with a different data folder, run a CLI, or hold another app's login. Anything that looked like Claude Severance on iOS would have to sign in to Claude itself, which Anthropic's terms don't allow for third-party apps. On iPhone and iPad, use the Claude app's own account menu, or a second device for a second account. We'll revisit only if Apple or Anthropic add a supported way to run accounts side by side.
 
-## Approach
+## Layout
 
-**One Go program for Linux and macOS** (`unix/`, `cmd/severance`): a single static binary with no runtime to install, cross-compiled for amd64 and arm64. Platform code is split by Go filename suffix (`_darwin.go`, `_linux.go`), and the logic they share sits in `internal/` packages. The Windows PowerShell version stays as it is; its `accounts.json` schema (version 1: id, name, label, colour, logo, alias, email, main, folders) is the contract both sides keep.
+A Cargo workspace at the repository root. The PowerShell 1.x code stays in `src/` until 2.0 ships (see "The 1.x line" below).
 
 ```
-unix/
-  go.mod
-  cmd/severance/            main, subcommands
-  internal/config/          accounts.json, the same schema as Windows
-  internal/alias/           conflict check: shell builtins, other accounts, PATH, shell aliases
-  internal/shell/           bash, zsh and fish hooks for auto-switch by folder
-  internal/statusline/      the Claude Code status line badge
-  internal/desktop/         launchers: desktop_darwin.go, desktop_linux.go
-  internal/icon/            lettered shells and logos to .icns and .png
+Cargo.toml                  workspace; [workspace.package] version is the single source of truth for 2.x
+rust-toolchain.toml         pinned stable toolchain, with clippy and rustfmt
+crates/
+  severance-core/           everything that isn't UI
+    config                  accounts.json (schema version 1, unchanged), read and written with serde
+    alias                   conflict check: reserved names, other accounts, PATH, shell aliases and builtins
+    install                 install, update, repair and uninstall as one plan of steps, with a backup first
+    claude                  find Claude Desktop and Claude Code; read the signed-in email (never the tokens)
+    shims                   per-account commands: <alias>.cmd on Windows, small sh scripts elsewhere
+    hooks                   auto-switch by folder: PowerShell profile, bash, zsh and fish
+    statusline              the Claude Code status line badge
+    icon                    lettered shells and logos to .ico, .icns and .png (image, ab_glyph, bundled Plex)
+    platform/windows.rs     .lnk shortcuts, the user PATH (HKCU\Environment), Start menu
+    platform/macos.rs       .app launchers, Info.plist, icns
+    platform/linux.rs       .desktop files, XDG folders
+  severance-cli/            the `severance` binary: list, add, remove, alias, setup, open, repair, uninstall, statusline, version
+app/
+  src-tauri/                the `Claude Severance` window: install, update, accounts, uninstall
+  ui/                       plain HTML, CSS and a little JS, no bundler; the screens from docs/DESIGN.md
 ```
 
-The commands match Windows: `severance list | add | remove | alias | setup | open | repair | uninstall`, plus `severance statusline`, which Claude Code calls for the badge. `severance setup` is an interactive terminal flow. A graphical setup window is out of scope for the first releases.
+`severance-core` has no UI code and no Tauri dependency, so the CLI stays small and every behaviour is unit-tested without a window. Platform code sits behind one trait with three `cfg(target_os)` implementations.
 
 ### Where things live
 
-| | macOS | Linux |
-|---|---|---|
-| Data | `~/Library/Application Support/Claude Severance/` | `$XDG_DATA_HOME/claude-severance/` (`~/.local/share/...`) |
-| Commands | `~/.local/bin/<alias>` (added to PATH by the shell hook) | `~/.local/bin/<alias>` |
-| Launchers | `~/Applications/Claude Severance/Claude - <name>.app` | `~/.local/share/applications/claude-severance-<id>.desktop` |
-| Main account | `~/.claude`, untouched except the `statusLine` key | same |
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Data (`accounts.json`, logos, profiles) | `%LOCALAPPDATA%\ClaudeSeverance\`, the same as 1.x | `~/Library/Application Support/Claude Severance/` | `$XDG_DATA_HOME/claude-severance/` (`~/.local/share/...`) |
+| Commands | `%LOCALAPPDATA%\ClaudeSeverance\bin` on the user PATH | `~/.local/bin/<alias>` | `~/.local/bin/<alias>` |
+| Launchers | Start menu and desktop `.lnk` | `~/Applications/Claude Severance/Claude - <name>.app` | `~/.local/share/applications/claude-severance-<id>.desktop` |
+| Main account | `~/.claude`, untouched except the `statusLine` key | same | same |
+
+On Windows, 2.0 reads the 1.x install as it is: same folder, same `accounts.json`, same profiles and logos. Updating replaces the PowerShell files, shims and shortcuts and keeps every account signed in. A backup is taken first, without `.credentials.json`, as 1.x does.
+
+## Rules carried over from 1.x
+
+- No administrator rights, on any platform. Windows installs per user.
+- Never read, copy or print login tokens (`.credentials.json`, Desktop session data, Keychain items).
+- Changes to the user's PATH, shell profiles and Claude settings are listed in the setup window and confirmed before they happen.
+- Preview mode (`--preview`) shows every screen with sample accounts and changes nothing; CI renders every screen from it.
 
 ## Phases
 
-1. **Spike (macOS and Linux).** Prove the three things the plan rests on, before writing the real code:
+1. **Spike (all three).** Prove what the plan rests on before writing the real code:
    - A second Desktop window with `--user-data-dir` keeps its own login on macOS, alongside the normal app.
-   - Claude Code with `CLAUDE_CONFIG_DIR` keeps its login apart on macOS. Claude Code stores credentials in the macOS Keychain there, not in `.credentials.json`; check that each config folder gets its own Keychain entry. If it doesn't, the macOS port is CLI-limited until Anthropic supports it.
-   - Whether a Linux build of Claude Desktop exists at that point, official or community, and whether it honours `--user-data-dir`.
+   - Claude Code with `CLAUDE_CONFIG_DIR` keeps its login apart on macOS. Claude Code stores credentials in the macOS Keychain there, not in `.credentials.json`; check that each config folder gets its own Keychain entry. If it doesn't, macOS is Desktop-only until Anthropic supports it.
+   - Whether a Linux build of Claude Desktop exists, official or community, and whether it honours `--user-data-dir`.
+   - Tauri per-user install on Windows (NSIS `currentUser`) without administrator rights, and WebView2 present on a clean Windows 10 and 11.
+
    Each finding goes into this file before phase 2.
-2. **CLI core, preview (both).** `list`, `add`, `remove`, `alias`, `repair`, `uninstall`, the status line badge, shell hooks, and the alias conflict check. Released as `v1.2.0-preview.N` tarballs. Tests run on `ubuntu-latest` and `macos-latest`.
-3. **macOS launchers.** A per-account `.app` with its own `.icns` icon (from the logo or lettered shell), made locally, so Gatekeeper doesn't quarantine it. The release itself is ad-hoc signed and not notarized at first; installing is `xattr -d com.apple.quarantine` or Homebrew (below).
-4. **Linux launchers**, only if phase 1 found a Desktop build that works: `.desktop` files with icons, otherwise Claude Code only, and the setup says so plainly.
-5. **Packaging.** A Homebrew tap (`brew install fauzulkc/tap/claude-severance`) for macOS and Linux; then `.deb` and `.rpm` through nfpm, and an AUR package. Developer ID signing and notarization once there is an Apple Developer account (secrets in the release workflow; the job skips when they're missing).
-6. **Stable.** Drop "preview" when both ports have been used daily for a release cycle with no data-loss bugs.
+2. **Core and CLI on Windows, at parity with 1.1.** `severance-core` and `severance-cli` do everything the PowerShell `severance` command and install do today, against the same `accounts.json`. Pester's 37 cases are ported as Rust tests. An end-to-end test upgrades a 1.1 install made by the PowerShell version in CI and checks nothing was lost. Released as `v2.0.0-preview.N`.
+3. **The setup window.** The Tauri app with the 1.1 screens (install, update, accounts editor with tiles and logos, uninstall), light and dark, plus preview mode and screenshot capture for CI.
+4. **macOS and Linux.** Launchers, shell hooks and the status line, behind the same core. macOS `.app` launchers are made locally per account, so Gatekeeper doesn't quarantine them; Linux launchers only where phase 1 found a Desktop build, otherwise Claude Code only, and setup says so plainly.
+5. **Packaging.** Windows: a portable zip and a per-user installer, plus winget and Scoop. macOS and Linux: a Homebrew tap (`brew install fauzulkc/tap/claude-severance`), then `.deb`, `.rpm` and AUR. Code signing on Windows and Developer ID notarization on macOS once certificates exist (secrets in the release workflow; those steps skip when they're missing).
+6. **2.0 stable.** When 2.0 has been used daily on Windows for a release cycle with no data-loss bugs and the update from 1.1 is proven. macOS and Linux may stay marked preview after that until the same bar is met there.
 
 ## Testing
 
-- Unit tests (`go test ./...`) on `ubuntu-latest` and `macos-latest` for config, alias checks, shell hook text, the status line and icon generation, all in a temporary `HOME`.
-- An end-to-end test per OS in CI: `severance add` and `remove` against a fake `claude` on PATH, checking the shims, hooks and launchers it writes, then that `uninstall` leaves nothing behind.
+- `cargo fmt --check`, `cargo clippy -D warnings` and `cargo test --workspace` on `windows-latest`, `ubuntu-latest` and `macos-latest` for every push and pull request.
+- Core tests run in a temporary home folder with a fake `claude` on PATH: config round-trips (including 1.x files), alias conflicts, shims, hooks, the status line, icons, and install then uninstall leaving nothing behind.
 - Linux launchers are checked with `desktop-file-validate`; macOS bundles with `plutil -lint` and `codesign --verify`.
+- The window: every screen rendered in preview mode, light and dark, uploaded as CI artifacts like the 1.x screenshots.
+
+## The 1.x line
+
+- Until 2.0 is stable, `main` holds both: PowerShell in `src/`, Rust in `crates/` and `app/`. Tags `v1.*` build the PowerShell zip; tags `v2.*` build the Rust binaries (see `.github/workflows/release.yml`).
+- When 2.0 is stable, a `1.x` branch is cut from the last PowerShell commit for fixes, and the PowerShell code leaves `main`.
+- 1.x keeps `releases/latest/download/ClaudeSeverance.zip` until 2.0 stable takes it over with its own Windows zip.
 
 ## Risks
 
 - **Desktop multi-instance isn't officially supported** on any platform. Windows already depends on it; the macOS spike decides whether it holds there.
-- **Keychain sharing on macOS** could make Claude Code accounts share a login. If so, the macOS port waits, or ships Desktop launchers only.
-- **No Linux Claude Desktop.** The Linux port then covers Claude Code only, which is still the main use for developers.
-- **The name.** See the naming decision in [RELEASING.md](../RELEASING.md); a rename is cheapest before these ports exist.
+- **Keychain sharing on macOS** could make Claude Code accounts share a login. If so, macOS ships Desktop launchers only at first.
+- **No Linux Claude Desktop.** The Linux build then covers Claude Code only, which is still the main use for developers.
+- **Unsigned binaries.** Windows SmartScreen and macOS Gatekeeper warn about unsigned downloads, as antivirus sometimes flags unsigned PowerShell today. Signing is phase 5; until then the README says what the warning looks like.
+- **Rewrite risk.** 1.1 works today. The 1.x line stays supported until 2.0 has proven the update path on real installs.
+- **The name.** See the naming decision in [RELEASING.md](../RELEASING.md).
