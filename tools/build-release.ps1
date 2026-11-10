@@ -8,7 +8,7 @@ $name = "ClaudeSeverance-$version"
 $stage = Join-Path $dist $name
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
-foreach ($f in 'Install.cmd', 'Uninstall.cmd', 'Preview.cmd', 'README.md', 'LICENSE', 'CHANGELOG.md') { Copy-Item (Join-Path $root $f) $stage }
+foreach ($f in 'Install.cmd', 'Uninstall.cmd', 'Preview.cmd', 'README.md', 'LICENSE', 'NOTICE', 'CHANGELOG.md') { Copy-Item (Join-Path $root $f) $stage }
 Copy-Item (Join-Path $root 'src') $stage -Recurse
 $zip = Join-Path $dist "$name.zip"
 Remove-Item $zip -Force -ErrorAction SilentlyContinue

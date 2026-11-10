@@ -19,12 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-The fonts in src/fonts (IBM Plex Sans and IBM Plex Mono, unmodified, by IBM
-Corp.) are licensed under the SIL Open Font License 1.1, with Reserved Font
-Name "Plex". The license text is in src/fonts/OFL-IBMPlex.txt.
-
-"Claude" is a trademark of Anthropic, PBC. This project is not affiliated with,
-endorsed by, or sponsored by Anthropic.

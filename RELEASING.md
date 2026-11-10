@@ -35,7 +35,7 @@ A failed run can be re-run from the Actions tab; uploads replace what's already 
 
 ### Decide first
 
-- [x] **Name: kept as "Claude Severance"** (decided 2026-11-10), with the not-affiliated note in the README and LICENSE. Known risk: Anthropic's trademark guidelines say its marks may be used only as specifically permitted, and their only approved third-party pattern is "*YourName* Powered by Claude"; a tool called "Claude Remote" renamed in March 2026 after a trademark complaint. If Anthropic asks, rename promptly: the fallback is "Severance for Claude". The install folder and commands don't depend on the product name, so a rename doesn't break installs.
+- [x] **Name: kept as "Claude Severance"** (decided 2026-11-10), with the not-affiliated note in the README and NOTICE. Known risk: Anthropic's trademark guidelines say its marks may be used only as specifically permitted, and their only approved third-party pattern is "*YourName* Powered by Claude"; a tool called "Claude Remote" renamed in March 2026 after a trademark complaint. If Anthropic asks, rename promptly: the fallback is "Severance for Claude". The install folder and commands don't depend on the product name, so a rename doesn't break installs.
 - [x] **Licence:** MIT, copyright Fauzul Kabir Chowdhury, as in `LICENSE`.
 - [x] **Visibility:** public from the first push. Commits use the GitHub no-reply address.
 

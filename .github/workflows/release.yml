@@ -197,7 +197,7 @@ jobs:
               *)         cp "target/$1/release/$bin" "$stage/" ;;
             esac
           done
-          cp LICENSE README.md CHANGELOG.md "$stage/"
+          cp LICENSE NOTICE README.md CHANGELOG.md "$stage/"
           cd stage
           case "$ASSET" in
             windows-*) file="$name.zip"; 7z a -tzip -bso0 "../dist/$file" "$name" ;;

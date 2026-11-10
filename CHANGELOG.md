@@ -12,6 +12,7 @@ All notable changes to Claude Severance. The format follows [Keep a Changelog](h
 - **A fresh look for the 2.0 manager window.** Accounts are cards showing the command each one answers to. Choosing one opens its own page, beside the list in a wide window or in place of it in a narrow one. The page reads as plain phrases (Signs in as, Opens with) instead of a grid of labelled boxes.
 
 ### Fixed
+- **GitHub now shows the licence as MIT.** The font and trademark notes moved out of `LICENSE` into a new `NOTICE` file, which ships in the release downloads alongside it.
 - 2.0 manager window: maximised or on a big screen, the content no longer stretches across the whole screen. In a narrow window, shortcut choices move under their description instead of cutting it short, and the wrong-email warning wraps instead of being cut off. After saving, the footer no longer says there are unsaved changes.
 
 ## [2.0.0-preview.1] - 2026-11-10
