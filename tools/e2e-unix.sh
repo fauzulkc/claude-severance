@@ -166,6 +166,8 @@ fi
 # ---- the manager window opens on the real accounts ----
 if [ -x "$root/bin/ClaudeSeverance" ]; then
   if [ "$os" = Linux ]; then
+    # Xvfb has no GPU: WebKitGTK draws nothing unless it renders in software
+    WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 \
     xvfb-run -a -s "-screen 0 1280x900x24" sh -c "
       '$root/bin/ClaudeSeverance' & pid=\$!
       sleep 12
