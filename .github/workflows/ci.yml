@@ -145,7 +145,7 @@ jobs:
         if: steps.rust.outputs.present == 'true' && runner.os != 'Windows'
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            sudo apt-get install -y -qq desktop-file-utils xvfb imagemagick zsh
+            sudo apt-get install -y -qq desktop-file-utils xvfb x11-utils imagemagick zsh
           fi
           cargo build --locked --package severance-cli --package severance-app
           mkdir -p "$RUNNER_TEMP/shots"

@@ -166,14 +166,19 @@ fi
 # ---- the manager window opens on the real accounts ----
 if [ -x "$root/bin/ClaudeSeverance" ]; then
   if [ "$os" = Linux ]; then
-    # Xvfb has no GPU: WebKitGTK draws nothing unless it renders in software
-    WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 \
-    xvfb-run -a -s "-screen 0 1280x900x24" sh -c "
-      '$root/bin/ClaudeSeverance' & pid=\$!
-      sleep 12
-      kill -0 \$pid || exit 3
-      ${shots:+import -window root '$shots/manager-linux.png';}
-      kill \$pid" || fail "the manager window exited early on Linux"
+    out_dir="${shots:-$work}"
+    Xvfb :99 -screen 0 1280x900x24 -nolisten tcp & xvfb=$!
+    sleep 2
+    # Xvfb has no GPU, so WebKitGTK renders in software
+    DISPLAY=:99 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
+      "$root/bin/ClaudeSeverance" > "$out_dir/manager-linux.log" 2>&1 & pid=$!
+    sleep 15
+    alive=yes; kill -0 "$pid" 2>/dev/null || alive=no
+    echo "--- windows on the display"; DISPLAY=:99 xwininfo -root -tree | grep -v 'has no name' | head -30 || true
+    DISPLAY=:99 import -window root "$out_dir/manager-linux.png" || true
+    kill "$pid" "$xvfb" 2>/dev/null || true
+    echo "--- the window's output"; cat "$out_dir/manager-linux.log"
+    [ "$alive" = yes ] || fail "the manager window exited early on Linux"
   else
     "$root/bin/ClaudeSeverance" & pid=$!
     sleep 12
