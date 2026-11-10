@@ -125,6 +125,14 @@ powershell -STA -File tools\make-graphics.ps1      # rebuild the logo, app icon 
 Invoke-Pester -Path tests                          # unit tests (Pester 5)
 ```
 
+**2.0 (Rust, in progress)** lives in `crates/`. It builds with the toolchain pinned in `rust-toolchain.toml`:
+
+```bash
+cargo test --workspace                                  # unit tests and a sandboxed 1.x-to-2.0 update
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p severance-cli -- --sandbox target/sandbox install   # try any command without touching this PC
+```
+
 See [CONTRIBUTING.md](CONTRIBUTING.md), the setup window's design notes in [docs/DESIGN.md](docs/DESIGN.md), and [RELEASING.md](RELEASING.md).
 
 **Version 2.0 is a rewrite in Rust** for Windows, macOS and Linux from one codebase, with the same accounts file, so a 1.x install updates in place. It ships as previews first; 1.x stays supported until 2.0 is stable. iOS isn't possible (an iOS app can't start other apps with their own data). See [docs/PLATFORMS-PLAN.md](docs/PLATFORMS-PLAN.md).

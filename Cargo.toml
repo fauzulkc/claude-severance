@@ -1,0 +1,48 @@
+[workspace]
+resolver = "3"
+members = ["crates/severance-core", "crates/severance-cli"]
+
+[workspace.package]
+version = "2.0.0-preview.1"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/fauzulkc/claude-severance"
+authors = ["Fauzul Kabir Chowdhury"]
+
+[workspace.dependencies]
+severance-core = { path = "crates/severance-core" }
+anyhow = "1.0.104"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+regex = "1.13"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "gif", "ico"] }
+ab_glyph = "0.2.32"
+zip = { version = "9.5", default-features = false, features = ["deflate"] }
+walkdir = "2.5"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+dirs = "7.0"
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+clap = { version = "4.6", features = ["derive", "env"] }
+tempfile = "3.27"
+winreg = "0.56"
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Console",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell_Common",
+    "Management_Deployment",
+    "ApplicationModel",
+    "ApplicationModel_Core",
+    "Foundation",
+    "Foundation_Collections",
+    "Storage",
+] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "s"

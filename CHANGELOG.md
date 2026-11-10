@@ -4,9 +4,19 @@ All notable changes to Claude Severance. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- **2.0 preview: the Rust core and `severance` command, at parity with 1.1 on Windows** (phase 2 of `docs/PLATFORMS-PLAN.md`). A Cargo workspace: `severance-core` (accounts, the command-name check, Claude Code settings and badge, auto-switch hook, icons and logos, backups, install, update and uninstall) and `severance-cli` (`severance`, plus `severancew`, which opens Claude Desktop from shortcuts without a console window).
+- It reads and updates a 1.x install in place: the same folder and `accounts.json`, every login untouched, 1.x's scripts, shims, shortcuts, badge and profile hook replaced by 2.0's. An end-to-end test runs exactly that update in a sandbox.
+- `severance install`, `repair`, `add` (now with `--logo`), `remove`, `alias`, `open`, `list` and `uninstall [--remove-data]`, the same as 1.1's. An account can be named by the start of its id or name when only one matches.
+- `--sandbox <dir>` (or `SEVERANCE_SANDBOX`) runs any command against a pretend computer in one folder, changing nothing else.
+- Colour only goes to a terminal, and `NO_COLOR` turns it off.
+
 ### Changed
 - **Plan: version 2.0 is a rewrite in Rust** for Windows, macOS and Linux, replacing the planned separate Go port. One Cargo workspace (a core library, the `severance` command and a Tauri setup window) reads the same `accounts.json`, so a 1.x install updates in place. See `docs/PLATFORMS-PLAN.md`.
 - CI checks the Rust workspace (format, Clippy, tests) on Windows, Linux and macOS once it exists. Release tags `v2.*` build Rust archives for Windows x64 and Arm64, Linux x86_64 and aarch64, and macOS universal; `v1.*` tags still build the PowerShell zip.
+
+### Fixed
+- The release workflow failed actionlint's shellcheck on unquoted `$TARGETS`; it now splits targets into an array.
 
 ## [1.1.0] - 2026-11-10
 

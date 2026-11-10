@@ -157,7 +157,8 @@ jobs:
       - name: Toolchain and targets
         run: |
           rustup toolchain install
-          for t in $TARGETS; do rustup target add "$t"; done
+          read -r -a targets <<< "$TARGETS"
+          for t in "${targets[@]}"; do rustup target add "$t"; done
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -169,7 +170,8 @@ jobs:
 
       - name: Build the command-line tool
         run: |
-          for t in $TARGETS; do cargo build --release --locked --package severance-cli --target "$t"; done
+          read -r -a targets <<< "$TARGETS"
+          for t in "${targets[@]}"; do cargo build --release --locked --package severance-cli --target "$t"; done
 
       # The setup window (app/) gets its own bundling step once it exists: per-user installer on
       # Windows, .app on macOS, AppImage and .deb on Linux. See docs/PLATFORMS-PLAN.md, phases 3 and 5.
@@ -180,12 +182,15 @@ jobs:
           name="ClaudeSeverance-$VERSION-$ASSET"
           stage="stage/$name"
           mkdir -p "$stage" dist
-          set -- $TARGETS
-          case "$ASSET" in
-            windows-*) cp "target/$1/release/severance.exe" "$stage/" ;;
-            macos-*)   lipo -create -output "$stage/severance" "target/$1/release/severance" "target/$2/release/severance" ;;
-            *)         cp "target/$1/release/severance" "$stage/" ;;
-          esac
+          read -r -a targets <<< "$TARGETS"
+          set -- "${targets[@]}"
+          for bin in severance severancew; do
+            case "$ASSET" in
+              windows-*) cp "target/$1/release/$bin.exe" "$stage/" ;;
+              macos-*)   lipo -create -output "$stage/$bin" "target/$1/release/$bin" "target/$2/release/$bin" ;;
+              *)         cp "target/$1/release/$bin" "$stage/" ;;
+            esac
+          done
           cp LICENSE README.md CHANGELOG.md "$stage/"
           cd stage
           case "$ASSET" in

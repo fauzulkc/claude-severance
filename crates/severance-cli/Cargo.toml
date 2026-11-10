@@ -1,0 +1,29 @@
+[package]
+name = "severance-cli"
+description = "The severance command for Claude Severance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "severance"
+path = "src/main.rs"
+
+# Opens Claude Desktop for an account without a console window (what the shortcuts call)
+[[bin]]
+name = "severancew"
+path = "src/bin/severancew.rs"
+
+[dependencies]
+severance-core.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+[dev-dependencies]
+tempfile.workspace = true

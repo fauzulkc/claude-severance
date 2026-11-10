@@ -2,3 +2,4 @@ dist/
 docs/screenshots/*.error.txt
 docs/screenshots/capture.log
 __pycache__/
+target/

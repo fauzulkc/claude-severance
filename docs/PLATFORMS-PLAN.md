@@ -72,6 +72,12 @@ On Windows, 2.0 reads the 1.x install as it is: same folder, same `accounts.json
 - Changes to the user's PATH, shell profiles and Claude settings are listed in the setup window and confirmed before they happen.
 - Preview mode (`--preview`) shows every screen with sample accounts and changes nothing; CI renders every screen from it.
 
+## Status
+
+- **Phase 2 (core and CLI on Windows): built, not yet released.** `crates/severance-core` and `crates/severance-cli` do what 1.1's module and `severance` command do, against the same `accounts.json`. Tests cover 1.1's Pester cases and a sandboxed update of a 1.1 install. The first `v2.0.0-preview.1` tag waits for the steps below.
+- Before the first preview: the update from 1.1 on a real install (backup first, as for 1.1), the auto-switch prompt for an unmapped folder in a real terminal, and the ClaudeProfiles migration (1.x's, not yet ported; anyone still on ClaudeProfiles can install 1.1 first).
+- Phase 1 (the spike) is still open for macOS and Linux; Windows didn't need it.
+
 ## Phases
 
 1. **Spike (all three).** Prove what the plan rests on before writing the real code:

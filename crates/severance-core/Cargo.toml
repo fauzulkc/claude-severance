@@ -1,0 +1,30 @@
+[package]
+name = "severance-core"
+description = "Accounts, commands, icons and install steps for Claude Severance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+regex.workspace = true
+image.workspace = true
+ab_glyph.workspace = true
+zip.workspace = true
+walkdir.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+sysinfo.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winreg.workspace = true
+windows.workspace = true
+
+[dev-dependencies]
+image.workspace = true
+tempfile.workspace = true
