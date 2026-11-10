@@ -35,6 +35,8 @@ const api = (() => {
       sandbox: true,
       palette,
       platformLaunchers: true,
+      hasDesktop: true,
+      menuName: 'Start menu',
       autoSwitch: true,
       accounts: [
         { account: acct('personal', 'Personal', palette[0], 'claude-personal', 'me@example.com', true, [], L(true, true, false, true)), signIn: { email: 'me@example.com', org: '' }, check: 'ok', logoData: null },

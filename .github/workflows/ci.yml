@@ -139,11 +139,24 @@ jobs:
         if: steps.rust.outputs.present == 'true'
         run: cargo test --workspace --locked
 
-      - name: Check launchers
-        if: steps.rust.outputs.present == 'true' && runner.os == 'Linux' && hashFiles('crates/severance-core/testdata/launchers/*.desktop') != ''
+      # The tests above use a sandbox; this installs for real on the runner, in a throwaway home folder, and runs
+      # every launcher, shell profile and command it made (tools/e2e-unix.sh)
+      - name: Real install (launchers, shell profiles, commands, window)
+        if: steps.rust.outputs.present == 'true' && runner.os != 'Windows'
         run: |
-          sudo apt-get install -y -qq desktop-file-utils
-          desktop-file-validate crates/severance-core/testdata/launchers/*.desktop
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get install -y -qq desktop-file-utils xvfb imagemagick zsh
+          fi
+          cargo build --locked --package severance-cli --package severance-app
+          mkdir -p "$RUNNER_TEMP/shots"
+          bash tools/e2e-unix.sh target/debug "$RUNNER_TEMP/shots"
+
+      - uses: actions/upload-artifact@v7
+        if: always() && steps.rust.outputs.present == 'true' && runner.os != 'Windows'
+        with:
+          name: real-install-${{ matrix.name }}
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
 
   lint:
     name: Workflows and hygiene

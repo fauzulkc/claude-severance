@@ -120,9 +120,17 @@ function fillDetail(node, a) {
   // launchers
   for (const box of node.querySelectorAll('.launcher')) {
     const kind = box.dataset.kind;
+    // Linux may have no Claude Desktop: then there's no app to launch
+    const noApp = kind === 'app' && S.info.hasDesktop === false;
+    box.classList.toggle('unavailable', noApp);
+    if (noApp) box.title = "Claude Desktop isn't installed on this computer";
     for (const chip of box.querySelectorAll('.chip')) {
       const place = chip.dataset.place;
-      chip.setAttribute('aria-pressed', String(!!a.launchers[kind][place]));
+      if (place === 'startMenu' && S.info.menuName) {
+        chip.textContent = S.info.menuName.charAt(0).toUpperCase() + S.info.menuName.slice(1);
+      }
+      chip.disabled = noApp;
+      chip.setAttribute('aria-pressed', String(!noApp && !!a.launchers[kind][place]));
       chip.addEventListener('click', () => {
         a.launchers[kind][place] = !a.launchers[kind][place];
         chip.setAttribute('aria-pressed', String(a.launchers[kind][place]));
@@ -130,7 +138,7 @@ function fillDetail(node, a) {
       });
     }
     const open = $('.open-now', box);
-    open.disabled = !!a.isNew || !S.info.platformLaunchers;
+    open.disabled = !!a.isNew || noApp || !S.info.platformLaunchers;
     open.title = a.isNew ? 'Save first' : '';
     open.addEventListener('click', async () => {
       try { const msg = await api.open(kind, a.id); if (msg) toast(msg); } catch (e) { toast(String(e)); }

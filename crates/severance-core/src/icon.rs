@@ -162,11 +162,23 @@ pub fn account_image(hex: &str, label: &str, logo: Option<&Path>) -> RgbaImage {
     letter_shell(hex, label, SIZE)
 }
 
-/// Writes a one-frame .ico holding a 256 px PNG, which Windows shows sharp at every size it needs
-pub fn write_ico(path: &Path, img: &RgbaImage) -> Result<()> {
+fn png_bytes(img: &RgbaImage) -> Result<Vec<u8>> {
     let mut png = Vec::new();
     DynamicImage::ImageRgba8(img.clone())
         .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)?;
+    Ok(png)
+}
+
+fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(path, bytes).with_context(|| format!("couldn't write {}", path.display()))
+}
+
+/// Writes a one-frame .ico holding a 256 px PNG, which Windows shows sharp at every size it needs
+pub fn write_ico(path: &Path, img: &RgbaImage) -> Result<()> {
+    let png = png_bytes(img)?;
     let mut out = Vec::with_capacity(png.len() + 22);
     out.extend_from_slice(&0u16.to_le_bytes()); // reserved
     out.extend_from_slice(&1u16.to_le_bytes()); // type: icon
@@ -177,21 +189,57 @@ pub fn write_ico(path: &Path, img: &RgbaImage) -> Result<()> {
     out.extend_from_slice(&(png.len() as u32).to_le_bytes());
     out.extend_from_slice(&22u32.to_le_bytes()); // offset of the frame
     out.extend_from_slice(&png);
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    std::fs::write(path, out).with_context(|| format!("couldn't write {}", path.display()))
+    write_bytes(path, &out)
 }
 
-/// Writes an account's .ico into `bin` and returns its path
+/// Writes a macOS .icns with PNG frames at 128 and 256 px (types ic07 and ic08)
+pub fn write_icns(path: &Path, img: &RgbaImage) -> Result<()> {
+    let mut body = Vec::new();
+    for (kind, size) in [(b"ic07", 128u32), (b"ic08", 256)] {
+        let frame = image::imageops::resize(img, size, size, image::imageops::FilterType::Lanczos3);
+        let png = png_bytes(&frame)?;
+        body.extend_from_slice(kind);
+        body.extend_from_slice(&(png.len() as u32 + 8).to_be_bytes());
+        body.extend_from_slice(&png);
+    }
+    let mut out = Vec::with_capacity(body.len() + 8);
+    out.extend_from_slice(b"icns");
+    out.extend_from_slice(&(body.len() as u32 + 8).to_be_bytes());
+    out.extend_from_slice(&body);
+    write_bytes(path, &out)
+}
+
+/// The icon file type launchers use here: .ico on Windows, .icns on macOS, .png on Linux
+pub fn icon_ext() -> &'static str {
+    if cfg!(windows) {
+        "ico"
+    } else if cfg!(target_os = "macos") {
+        "icns"
+    } else {
+        "png"
+    }
+}
+
+/// Writes `img` as this platform's icon file
+pub fn write_icon(path: &Path, img: &RgbaImage) -> Result<()> {
+    match icon_ext() {
+        "ico" => write_ico(path, img),
+        "icns" => write_icns(path, img),
+        _ => write_bytes(path, &png_bytes(img)?),
+    }
+}
+
+/// Writes an account's icon into `bin` and returns its path
 pub fn write_account_icon(account: &Account, paths: &Paths) -> Result<PathBuf> {
-    let path = paths.bin().join(format!("icon-{}.ico", account.id));
+    let path = paths
+        .bin()
+        .join(format!("icon-{}.{}", account.id, icon_ext()));
     let img = account_image(
         &account.color,
         &account.label(),
         account.logo_path(paths).as_deref(),
     );
-    write_ico(&path, &img)?;
+    write_icon(&path, &img)?;
     Ok(path)
 }
 

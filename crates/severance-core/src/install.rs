@@ -4,7 +4,8 @@
 //! PowerShell profiles, closing Claude windows) goes through [`Host`], so tests run the whole install in a sandbox.
 
 use crate::alias::{self, CommandProbe};
-use crate::{Account, Config, Paths, backup, claude, hooks, icon, platform, settings};
+use crate::platform::Launcher;
+use crate::{Account, Config, Paths, account, backup, claude, hooks, icon, platform, settings};
 use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 
@@ -13,14 +14,6 @@ pub const MARKER: &str = "ClaudeSeverance";
 
 /// The manager window's program, installed next to `severance` when the build has it
 pub const MANAGER: &str = "ClaudeSeverance";
-
-struct Shortcut<'a> {
-    name: String,
-    target: &'a Path,
-    args: String,
-    workdir: PathBuf,
-    description: String,
-}
 
 /// Files 1.x kept in `bin` that 2.0 replaces
 const OLD_SCRIPTS: &[&str] = &[
@@ -48,24 +41,25 @@ const SHARED: &[&str] = &[
 ];
 
 static APP_ICON: &[u8] = include_bytes!("../../../src/assets/severance.ico");
+/// The same mark as a PNG, for the icon formats of macOS and Linux
+static APP_MARK: &[u8] = include_bytes!("../../../assets/logo/png/mark-256.png");
 
 /// What the install changes outside Claude Severance's own folder
 pub trait Host {
     fn desktop_installed(&self) -> bool;
+    /// Whether accounts can do without Claude Desktop here (Linux, which Anthropic doesn't make it for)
+    fn desktop_optional(&self) -> bool {
+        false
+    }
     fn install_desktop_app(&self) -> Result<()>;
     fn install_claude_code(&self) -> Result<()>;
     fn claude_code_installed(&self, paths: &Paths) -> bool;
     fn desktop_dir(&self) -> Option<PathBuf>;
     fn start_menu_dir(&self) -> Option<PathBuf>;
-    fn create_shortcut(
-        &self,
-        lnk: &Path,
-        target: &Path,
-        args: &str,
-        workdir: &Path,
-        icon: Option<&Path>,
-        description: &str,
-    ) -> Result<()>;
+    /// The file a launcher called `name` goes in, in `dir`
+    fn launcher_path(&self, dir: &Path, name: &str) -> PathBuf;
+    fn create_shortcut(&self, file: &Path, launcher: &Launcher) -> Result<()>;
+    fn remove_launcher(&self, file: &Path);
     fn shortcuts_with(&self, dir: &Path, marker: &str) -> Vec<PathBuf>;
     fn set_user_path_entry(&self, dir: &Path, add: bool) -> Result<()>;
     fn set_user_env(&self, name: &str, value: Option<&str>) -> Result<()>;
@@ -73,6 +67,7 @@ pub trait Host {
     /// (policy, scope) for PowerShell profile scripts
     fn profile_execution_policy(&self) -> (String, String);
     fn allow_profile_scripts(&self) -> Result<()>;
+    /// Adds the entry to the list of installed programs; `false` where there is no such list
     fn register_uninstall(
         &self,
         version: &str,
@@ -80,7 +75,7 @@ pub trait Host {
         icon: Option<&Path>,
         exe: &Path,
         size_kb: u32,
-    ) -> Result<()>;
+    ) -> Result<bool>;
     fn unregister_uninstall(&self);
     fn stop_desktop(&self, paths: &Paths, id: Option<&str>);
     fn remove_later(&self, dir: &Path);
@@ -93,6 +88,9 @@ impl Host for System {
     fn desktop_installed(&self) -> bool {
         platform::resolve_claude_exe().is_ok()
     }
+    fn desktop_optional(&self) -> bool {
+        cfg!(target_os = "linux")
+    }
     fn install_desktop_app(&self) -> Result<()> {
         platform::install_desktop_app()
     }
@@ -103,26 +101,20 @@ impl Host for System {
         claude::find_cli(paths).is_some()
     }
     fn desktop_dir(&self) -> Option<PathBuf> {
-        // launchers elsewhere are phase 4 of docs/PLATFORMS-PLAN.md
-        if cfg!(windows) {
-            platform::desktop_dir()
-        } else {
-            None
-        }
+        // a Linux desktop without a Desktop folder has nowhere to show launchers
+        platform::desktop_dir().filter(|d| cfg!(windows) || d.is_dir())
     }
     fn start_menu_dir(&self) -> Option<PathBuf> {
         platform::start_menu_dir()
     }
-    fn create_shortcut(
-        &self,
-        lnk: &Path,
-        target: &Path,
-        args: &str,
-        workdir: &Path,
-        icon: Option<&Path>,
-        description: &str,
-    ) -> Result<()> {
-        platform::create_shortcut(lnk, target, args, workdir, icon, description)
+    fn launcher_path(&self, dir: &Path, name: &str) -> PathBuf {
+        platform::launcher_path(dir, name)
+    }
+    fn create_shortcut(&self, file: &Path, launcher: &Launcher) -> Result<()> {
+        platform::create_shortcut(file, launcher)
+    }
+    fn remove_launcher(&self, file: &Path) {
+        platform::remove_launcher(file)
     }
     fn shortcuts_with(&self, dir: &Path, marker: &str) -> Vec<PathBuf> {
         platform::shortcuts_with(dir, marker)
@@ -137,7 +129,9 @@ impl Host for System {
         if cfg!(windows) {
             hooks::powershell_profiles()
         } else {
-            Vec::new()
+            dirs::home_dir()
+                .map(|h| hooks::posix_profiles(&h))
+                .unwrap_or_default()
         }
     }
     fn profile_execution_policy(&self) -> (String, String) {
@@ -153,14 +147,15 @@ impl Host for System {
         icon: Option<&Path>,
         exe: &Path,
         size_kb: u32,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         platform::register_uninstall(&platform::UninstallEntry {
             version,
             root,
             icon,
             exe,
             size_kb,
-        })
+        })?;
+        Ok(cfg!(windows))
     }
     fn unregister_uninstall(&self) {
         platform::unregister_uninstall()
@@ -224,21 +219,22 @@ impl Host for Sandbox {
     fn start_menu_dir(&self) -> Option<PathBuf> {
         Some(self.dir.join("Start Menu").join("Claude Severance"))
     }
-    fn create_shortcut(
-        &self,
-        lnk: &Path,
-        target: &Path,
-        args: &str,
-        _workdir: &Path,
-        icon: Option<&Path>,
-        _description: &str,
-    ) -> Result<()> {
-        if let Some(d) = lnk.parent() {
+    fn launcher_path(&self, dir: &Path, name: &str) -> PathBuf {
+        dir.join(format!("{name}.lnk"))
+    }
+    fn create_shortcut(&self, file: &Path, l: &Launcher) -> Result<()> {
+        if let Some(d) = file.parent() {
             std::fs::create_dir_all(d)?;
         }
-        let icon = icon.map(|i| i.display().to_string()).unwrap_or_default();
-        std::fs::write(lnk, format!("{}\n{args}\n{icon}\n", target.display()))?;
+        let icon = l.icon.map(|i| i.display().to_string()).unwrap_or_default();
+        std::fs::write(
+            file,
+            format!("{}\n{}\n{icon}\n", l.target.display(), l.args),
+        )?;
         Ok(())
+    }
+    fn remove_launcher(&self, file: &Path) {
+        let _ = std::fs::remove_file(file);
     }
     fn shortcuts_with(&self, dir: &Path, marker: &str) -> Vec<PathBuf> {
         std::fs::read_dir(dir)
@@ -283,9 +279,9 @@ impl Host for Sandbox {
         _icon: Option<&Path>,
         exe: &Path,
         _size_kb: u32,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         self.note(&format!("APPS register {version} {}", exe.display()));
-        Ok(())
+        Ok(true)
     }
     fn unregister_uninstall(&self) {
         self.note("APPS unregister");
@@ -356,13 +352,18 @@ pub fn install(
     let mut notes = Vec::new();
     let bin = paths.bin();
 
+    let mut has_desktop = true;
     if req.install_desktop_app {
         host.install_desktop_app()?;
         step("Installed Claude Desktop");
     } else if !host.desktop_installed() {
-        bail!(
-            "Claude Desktop is not installed. Get it from claude.ai/download, then run setup again."
-        );
+        if !host.desktop_optional() {
+            bail!(
+                "Claude Desktop is not installed. Get it from claude.ai/download, then run setup again."
+            );
+        }
+        has_desktop = false;
+        notes.push("Claude Desktop isn't installed, so accounts get terminal launchers only. Run 'severance repair' after installing it.".into());
     }
     if req.install_code {
         if host.install_claude_code().is_ok() && host.claude_code_installed(paths) {
@@ -469,21 +470,31 @@ pub fn install(
         let _ = std::fs::remove_file(bin.join(f));
     }
     let _ = std::fs::remove_dir_all(bin.join("fonts"));
-    let app_icon = bin.join("assets").join("severance.ico");
+    let ico = bin.join("assets").join("severance.ico");
     std::fs::create_dir_all(bin.join("assets"))?;
-    if std::fs::read(&app_icon).ok().as_deref() != Some(APP_ICON) {
+    if std::fs::read(&ico).ok().as_deref() != Some(APP_ICON) {
         // an icon an open window still uses can't be replaced; the copy there is fine
-        if std::fs::write(&app_icon, APP_ICON).is_err() && !app_icon.exists() {
-            bail!("couldn't write {}", app_icon.display());
+        if std::fs::write(&ico, APP_ICON).is_err() && !ico.exists() {
+            bail!("couldn't write {}", ico.display());
         }
     }
+    let app_icon = if icon::icon_ext() == "ico" {
+        ico
+    } else {
+        let file = bin
+            .join("assets")
+            .join(format!("severance.{}", icon::icon_ext()));
+        let mark = image::load_from_memory(APP_MARK)?.to_rgba8();
+        icon::write_icon(&file, &mark)?;
+        file
+    };
     step("Copied Claude Severance to your PC");
 
     // ---- clean what an earlier run made ----
     let desktop = host.desktop_dir();
     if let Some(d) = &desktop {
         for lnk in host.shortcuts_with(d, MARKER) {
-            let _ = std::fs::remove_file(lnk);
+            host.remove_launcher(&lnk);
         }
     }
     let start_menu = host.start_menu_dir();
@@ -497,7 +508,7 @@ pub fn install(
     if let Ok(rd) = std::fs::read_dir(&bin) {
         for e in rd.filter_map(Result::ok) {
             let n = e.file_name().to_string_lossy().to_string();
-            if n.starts_with("icon-") && n.ends_with(".ico") {
+            if n.starts_with("icon-") && [".ico", ".icns", ".png"].iter().any(|x| n.ends_with(x)) {
                 let _ = std::fs::remove_file(e.path());
             }
         }
@@ -535,33 +546,40 @@ pub fn install(
         }
         let icon = icon::write_account_icon(a, paths).ok();
         let l = a.launchers_or_default(req.desktop_shortcuts);
+        let (app_name, term_name) = (a.shortcut_name(), a.terminal_shortcut_name());
+        let app_desc = format!("Claude Desktop - {}", a.name);
+        let term_desc = format!("Claude Code - {}", a.name);
+        let (app_args, term_args) = (format!("open {}", a.id), format!("run {}", a.id));
+        let start_dir = a.start_dir(paths);
         // the app: Claude Desktop for this account, through severancew (no console window)
-        let app = Shortcut {
-            name: a.shortcut_name(),
+        let app = Launcher {
+            name: &app_name,
             target: &launcher,
-            args: format!("open {}", a.id),
-            workdir: bin.clone(),
-            description: format!("Claude Desktop - {}", a.name),
+            args: &app_args,
+            workdir: &bin,
+            icon: icon.as_deref(),
+            description: &app_desc,
+            terminal: false,
         };
         // the terminal: this account's Claude Code, in its first folder
-        let term = Shortcut {
-            name: a.terminal_shortcut_name(),
+        let term = Launcher {
+            name: &term_name,
             target: &exe,
-            args: format!("run {}", a.id),
-            workdir: a.start_dir(paths),
-            description: format!("Claude Code - {}", a.name),
+            args: &term_args,
+            workdir: &start_dir,
+            icon: icon.as_deref(),
+            description: &term_desc,
+            terminal: true,
         };
-        for (sc, places) in [(&app, l.app), (&term, l.terminal)] {
+        let app_places = if has_desktop {
+            l.app
+        } else {
+            account::Places::NONE
+        };
+        for (sc, places) in [(&app, app_places), (&term, l.terminal)] {
             for (on, dir) in [(places.desktop, &desktop), (places.start_menu, &start_menu)] {
                 if on && let Some(d) = dir {
-                    host.create_shortcut(
-                        &d.join(format!("{}.lnk", sc.name)),
-                        sc.target,
-                        &sc.args,
-                        &sc.workdir,
-                        icon.as_deref(),
-                        &sc.description,
-                    )?;
+                    host.create_shortcut(&host.launcher_path(d, sc.name), sc)?;
                 }
             }
         }
@@ -577,21 +595,32 @@ pub fn install(
         } else {
             (&exe, "setup")
         };
+        let manage = "Claude Severance - Manage accounts";
         host.create_shortcut(
-            &sm.join("Claude Severance - Manage accounts.lnk"),
-            target,
-            args,
-            &bin,
-            Some(&app_icon),
-            "Add, rename or remove Claude accounts, and their launchers",
+            &host.launcher_path(sm, manage),
+            &Launcher {
+                name: manage,
+                target,
+                args,
+                workdir: &bin,
+                icon: Some(&app_icon),
+                description: "Add, rename or remove Claude accounts, and their launchers",
+                // without the window, setup prints the commands
+                terminal: args == "setup",
+            },
         )?;
+        let remove = "Uninstall Claude Severance";
         host.create_shortcut(
-            &sm.join("Uninstall Claude Severance.lnk"),
-            &exe,
-            "uninstall",
-            &bin,
-            Some(&app_icon),
-            "Go back to a single Claude",
+            &host.launcher_path(sm, remove),
+            &Launcher {
+                name: remove,
+                target: &exe,
+                args: "uninstall",
+                workdir: &bin,
+                icon: Some(&app_icon),
+                description: "Go back to a single Claude",
+                terminal: true,
+            },
         )?;
     }
     step("Added the launchers");
@@ -627,14 +656,15 @@ pub fn install(
     }
 
     let size_kb = dir_size(&bin) / 1024;
-    host.register_uninstall(
+    if host.register_uninstall(
         crate::VERSION,
         &paths.root,
         Some(&app_icon),
         &exe,
         size_kb as u32,
-    )?;
-    step("Added Claude Severance to Settings > Apps");
+    )? {
+        step("Added Claude Severance to Settings > Apps");
+    }
 
     Ok(Report {
         accounts: cfg.accounts,
@@ -684,13 +714,16 @@ pub fn uninstall(
 
     if let Some(d) = host.desktop_dir() {
         for lnk in host.shortcuts_with(&d, MARKER) {
-            let _ = std::fs::remove_file(lnk);
+            host.remove_launcher(&lnk);
         }
     }
     if let Some(sm) = host.start_menu_dir() {
         let _ = std::fs::remove_dir_all(sm);
     }
-    step("Removed shortcuts and Start menu entries");
+    step(&format!(
+        "Removed the launchers from the desktop and {}",
+        platform::MENU_NAME
+    ));
 
     hooks::remove_from(&host.profile_files(), hooks::START, hooks::END)?;
     host.set_user_path_entry(&paths.bin(), false)?;
@@ -698,7 +731,9 @@ pub fn uninstall(
     step("Removed the commands and auto-switch");
 
     host.unregister_uninstall();
-    step("Removed Claude Severance from Settings > Apps");
+    if cfg!(windows) {
+        step("Removed Claude Severance from Settings > Apps");
+    }
 
     let target = if remove_data {
         paths.root.clone()

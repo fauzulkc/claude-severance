@@ -176,3 +176,7 @@ footer { flex: none; padding: 12px 28px 18px; display: flex; align-items: center
 
 :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 input:focus-visible { outline: none; }
+
+/* Linux without Claude Desktop: the app launcher has nothing to open */
+.launcher.unavailable { opacity: .45; }
+.launcher.unavailable .chip { cursor: not-allowed; }

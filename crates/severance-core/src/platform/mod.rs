@@ -1,7 +1,19 @@
-//! What differs per operating system. Windows is complete; macOS and Linux arrive in phase 4 of
-//! docs/PLATFORMS-PLAN.md and say so plainly until then.
+//! What differs per operating system: `windows.rs`, and `unix.rs` for macOS and Linux.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// One launcher: a Windows shortcut, a Linux `.desktop` file or a macOS `.app`
+pub struct Launcher<'a> {
+    /// The name people see, "Claude - Acme"
+    pub name: &'a str,
+    pub target: &'a Path,
+    pub args: &'a str,
+    pub workdir: &'a Path,
+    pub icon: Option<&'a Path>,
+    pub description: &'a str,
+    /// Opens a terminal window running `target` (Windows does this by itself for a console program)
+    pub terminal: bool,
+}
 
 #[cfg(windows)]
 mod windows;
@@ -63,6 +75,8 @@ pub fn desktop_processes() -> Vec<DesktopProcess> {
             (name == "claude.exe"
                 && (exe.contains("\\windowsapps\\") || exe.contains("\\anthropicclaude\\")))
                 || (cfg!(target_os = "macos") && exe.contains("/claude.app/contents/macos/"))
+                || (cfg!(target_os = "linux")
+                    && (name == "claude-desktop" || exe.contains("claude-desktop")))
         })
         .map(|p| DesktopProcess {
             pid: p.pid().as_u32(),
@@ -78,7 +92,7 @@ pub fn desktop_processes() -> Vec<DesktopProcess> {
 
 /// Whether a Claude Desktop command line belongs to `dir` (the account's `--user-data-dir`, or the folder of all of
 /// them): the path, followed by a quote, a space, a separator or the end
-pub fn command_line_uses(command_line: &str, dir: &std::path::Path) -> bool {
+pub fn command_line_uses(command_line: &str, dir: &Path) -> bool {
     let line = command_line.to_lowercase().replace('/', "\\");
     let want = dir.to_string_lossy().to_lowercase().replace('/', "\\");
     let mut from = 0;

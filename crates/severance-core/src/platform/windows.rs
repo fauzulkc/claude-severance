@@ -320,14 +320,27 @@ pub fn allow_profile_scripts() -> Result<()> {
 // ---------------- shortcuts ----------------
 
 /// Writes a .lnk through the Windows shell
-pub fn create_shortcut(
-    lnk: &Path,
-    target: &Path,
-    args: &str,
-    workdir: &Path,
-    icon: Option<&Path>,
-    description: &str,
-) -> Result<()> {
+/// What Windows calls the place launchers go besides the desktop
+pub const MENU_NAME: &str = "Start menu";
+
+/// The shortcut file for `name` in `dir`
+pub fn launcher_path(dir: &Path, name: &str) -> PathBuf {
+    dir.join(format!("{name}.lnk"))
+}
+
+pub fn remove_launcher(path: &Path) {
+    let _ = std::fs::remove_file(path);
+}
+
+pub fn create_shortcut(lnk: &Path, l: &super::Launcher) -> Result<()> {
+    let super::Launcher {
+        target,
+        args,
+        workdir,
+        icon,
+        description,
+        ..
+    } = *l;
     use windows::Win32::System::Com::{
         CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
         IPersistFile,

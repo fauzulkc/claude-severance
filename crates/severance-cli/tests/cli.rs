@@ -113,7 +113,8 @@ fn the_whole_command_line_in_a_sandbox() {
     assert!(line.contains(" A ") && line.contains("Opus"), "{line}");
 
     // launchers: show, change, refuse nonsense
-    assert!(ok(sb, &["launchers", "acme"]).contains("terminal  Start menu"));
+    let menu = severance_core::platform::MENU_NAME;
+    assert!(ok(sb, &["launchers", "acme"]).contains(&format!("terminal  {menu}")));
     ok(
         sb,
         &[

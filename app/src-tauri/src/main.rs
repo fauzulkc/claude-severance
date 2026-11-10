@@ -52,6 +52,10 @@ struct View {
     installed: bool,
     palette: Vec<&'static str>,
     platform_launchers: bool,
+    /// What this platform calls the menu launchers go in
+    menu_name: &'static str,
+    /// Whether there's a Claude Desktop to make app launchers for (Linux often has none)
+    has_desktop: bool,
     auto_switch: bool,
     accounts: Vec<AccountView>,
 }
@@ -113,7 +117,9 @@ fn state(ctx: State<'_, Ctx>) -> Result<View, String> {
         sandbox: ctx.sandbox.is_some(),
         installed: ctx.paths.config().exists(),
         palette: PALETTE.to_vec(),
-        platform_launchers: cfg!(windows),
+        platform_launchers: true,
+        menu_name: platform::MENU_NAME,
+        has_desktop: ctx.host().desktop_installed(),
         auto_switch,
         accounts: views,
     })

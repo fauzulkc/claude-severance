@@ -402,7 +402,8 @@ fn add(
     accounts.push(new);
     save(ctx, accounts, logos, Vec::new(), Choices::current(ctx))?;
     say!(
-        "\x1b[36mNext: open 'Claude - {name}' from the Start menu and sign in, and run {alias} then /login.\x1b[0m"
+        "\x1b[36mNext: open 'Claude - {name}' from the {} and sign in, and run {alias} then /login.\x1b[0m",
+        platform::MENU_NAME
     );
     Ok(())
 }

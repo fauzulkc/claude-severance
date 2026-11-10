@@ -81,18 +81,26 @@ impl Places {
                 desktop: true,
                 start_menu: false,
             }),
-            "start-menu" | "start" | "startmenu" => Some(Self::START_MENU),
+            "start-menu"
+            | "start"
+            | "startmenu"
+            | "menu"
+            | "app-menu"
+            | "applications"
+            | "applications-folder" => Some(Self::START_MENU),
             "both" | "on" | "yes" => Some(Self::BOTH),
             _ => None,
         }
     }
 
-    pub fn describe(self) -> &'static str {
+    /// "desktop and Start menu", with this platform's name for the menu
+    pub fn describe(self) -> String {
+        let menu = crate::platform::MENU_NAME;
         match (self.desktop, self.start_menu) {
-            (true, true) => "desktop and Start menu",
-            (true, false) => "desktop",
-            (false, true) => "Start menu",
-            (false, false) => "none",
+            (true, true) => format!("desktop and {menu}"),
+            (true, false) => "desktop".into(),
+            (false, true) => menu.into(),
+            (false, false) => "none".into(),
         }
     }
 }
@@ -371,8 +379,9 @@ mod tests {
         assert_eq!(Places::parse("Start menu"), Some(Places::START_MENU));
         assert_eq!(
             Places::parse("both").unwrap().describe(),
-            "desktop and Start menu"
+            format!("desktop and {}", crate::platform::MENU_NAME)
         );
+        assert_eq!(Places::parse("app menu"), Some(Places::START_MENU));
         assert_eq!(Places::parse("sideways"), None);
     }
 
