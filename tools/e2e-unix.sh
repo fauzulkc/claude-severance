@@ -172,13 +172,23 @@ if [ -x "$root/bin/ClaudeSeverance" ]; then
     # Xvfb has no GPU, so WebKitGTK renders in software
     DISPLAY=:99 SEVERANCE_DEBUG=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 \
       "$root/bin/ClaudeSeverance" > "$out_dir/manager-linux.log" 2>&1 & pid=$!
-    sleep 40
+    # a debug build takes a while to start on a CI runner: wait for the window, then for it to paint
+    shown=no
+    for _ in $(seq 1 90); do
+      if DISPLAY=:99 xwininfo -root -tree | grep -q '"Claude Severance"'; then shown=yes; break; fi
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 1
+    done
+    grep -q 'page Finished' "$out_dir/manager-linux.log" 2>/dev/null || sleep 5
+    sleep 2
     alive=yes; kill -0 "$pid" 2>/dev/null || alive=no
     echo "--- windows on the display"; DISPLAY=:99 xwininfo -root -tree | head -40 || true
     DISPLAY=:99 import -window root "$out_dir/manager-linux.png" || true
     kill "$pid" "$xvfb" 2>/dev/null || true
     echo "--- the window's output"; cat "$out_dir/manager-linux.log"
     [ "$alive" = yes ] || fail "the manager window exited early on Linux"
+    [ "$shown" = yes ] || fail "the manager window never appeared on Linux"
+    grep -q 'page Finished' "$out_dir/manager-linux.log" || fail "the manager window's page didn't load on Linux"
   else
     "$root/bin/ClaudeSeverance" & pid=$!
     sleep 12
